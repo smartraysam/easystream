@@ -510,6 +510,88 @@ export const TimerModal: React.FC<TimerModalProps> = ({
             </div>
           </div>
 
+          {/* Quick Display & Font Size Controls Strip */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            background: 'rgba(56, 189, 248, 0.05)',
+            border: '1px solid rgba(56, 189, 248, 0.2)',
+            borderRadius: '12px',
+            padding: '10px 14px',
+            gap: '12px',
+            flexWrap: 'wrap'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{
+                width: '26px',
+                height: '26px',
+                borderRadius: '6px',
+                background: 'rgba(56, 189, 248, 0.15)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#38bdf8',
+              }}>
+                <Type size={15} />
+              </div>
+              <div>
+                <span style={{ fontSize: '13px', fontWeight: 800, color: '#f8fafc' }}>
+                  Display Font Size
+                </span>
+                <span style={{ fontSize: '11px', color: '#94a3b8', marginLeft: '6px' }}>
+                  (Confidence monitor digits scale)
+                </span>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+              <div style={{ display: 'flex', gap: '4px' }}>
+                {[100, 125, 150, 175, 200, 250].map((scale) => {
+                  const isSelected = (timerState.fontSizeScale || 100) === scale;
+                  return (
+                    <button
+                      key={scale}
+                      type="button"
+                      className={`btn ${isSelected ? 'btn-primary' : ''}`}
+                      style={{
+                        fontSize: '11px',
+                        padding: '4px 8px',
+                        fontWeight: 700,
+                        background: isSelected ? '#0284c7' : 'rgba(255, 255, 255, 0.05)',
+                        borderColor: isSelected ? '#38bdf8' : 'rgba(255, 255, 255, 0.12)',
+                      }}
+                      onClick={() => onSetTimerConfig({ fontSizeScale: scale })}
+                    >
+                      {scale}%
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <input
+                  type="range"
+                  min={80}
+                  max={300}
+                  step={5}
+                  value={timerState.fontSizeScale || 100}
+                  onChange={(e) => onSetTimerConfig({ fontSizeScale: Number(e.target.value) })}
+                  style={{ width: '80px', accentColor: '#38bdf8', cursor: 'pointer' }}
+                />
+                <span style={{
+                  fontSize: '12px',
+                  fontWeight: 800,
+                  color: '#38bdf8',
+                  minWidth: '38px',
+                  fontVariantNumeric: 'tabular-nums'
+                }}>
+                  {timerState.fontSizeScale || 100}%
+                </span>
+              </div>
+            </div>
+          </div>
+
           {/* Tab Navigation Navigation */}
           <div style={{
             display: 'flex',

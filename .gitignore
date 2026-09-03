@@ -1,5 +1,8 @@
 .DS_Store
 dist/
+temp_auto_push.bat
 node_modules/
 .env
 .env.local
+.gitignore
+branch_structure.json

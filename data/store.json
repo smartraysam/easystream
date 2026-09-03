@@ -31,7 +31,7 @@
     "shadowOffsetX": 0,
     "shadowOffsetY": 3,
     "textOutline": true,
-    "outlineWidth": 2,
+    "outlineWidth": 4,
     "outlineColor": "rgba(0, 0, 0, 0.95)",
     "bgType": "animated-gradient",
     "bgColor": "#0f172a",
@@ -45,14 +45,14 @@
   },
   "timerState": {
     "status": "idle",
-    "durationSec": 600,
-    "remainingSec": 600,
+    "durationSec": 420,
+    "remainingSec": 99,
     "startedAt": null,
     "targetEndTime": null,
     "allowOvertime": true,
-    "warningThresholdSec": 120,
+    "warningThresholdSec": 60,
     "criticalThresholdSec": 60,
-    "title": "Praise & Worship",
+    "title": "Announcements & Offering",
     "promptMessage": null,
     "promptVisible": false,
     "slots": [
@@ -92,9 +92,10 @@
         "warningThresholdSec": 60
       }
     ],
-    "activeSlotIndex": 1,
+    "activeSlotIndex": 2,
     "autoAdvance": false,
-    "showNextProgramAlert": true
+    "showNextProgramAlert": true,
+    "fontSizeScale": 175
   },
   "currentScheduleId": "sunday-morning-worship",
   "schedule": [
