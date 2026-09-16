@@ -750,6 +750,11 @@ const BIBLE_VERSIONS = {
   DRA: { id: "dra", name: "Douay-Rheims American Edition", provider: "bible-api" },
   YLT: { id: "ylt", name: "Young's Literal Translation", provider: "bible-api" },
   MSG: { id: "MSG", name: "The Message", provider: "bolls" },
+  CSB: { id: "CSB17", name: "Christian Standard Bible", provider: "bolls" },
+  NIRV: { id: "NIRV", name: "New International Reader's Version", provider: "bolls" },
+  BSB: { id: "BSB", name: "Berean Standard Bible", provider: "bolls" },
+  TLV: { id: "TLV", name: "Tree of Life Version", provider: "bolls" },
+  CEB: { id: "CEB", name: "Common English Bible", provider: "bolls" },
 };
 
 const BIBLE_BOOKS = [
