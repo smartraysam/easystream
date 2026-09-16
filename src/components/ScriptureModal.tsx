@@ -58,6 +58,11 @@ const AVAILABLE_BIBLE_VERSIONS = [
   { id: "DARBY", name: "Darby Bible", category: "Classic" },
   { id: "DRA", name: "Douay-Rheims", category: "Catholic" },
   { id: "YLT", name: "Young's Literal Translation", category: "Literal" },
+  { id: "CSB", name: "Christian Standard Bible", category: "Modern" },
+  { id: "NIRV", name: "New International Reader's Version", category: "Modern" },
+  { id: "BSB", name: "Berean Standard Bible", category: "Study" },
+  { id: "TLV", name: "Tree of Life Version", category: "Messianic" },
+  { id: "CEB", name: "Common English Bible", category: "Modern" },
 ];
 
 const POPULAR_SCRIPTURES = [

@@ -96,7 +96,12 @@ export const TARGET_VERSIONS = [
   { code: "YLT", bollsCode: "YLT", name: "Young's Literal Translation", provider: "bolls" },
   { code: "AMP", bollsCode: "AMP", name: "Amplified Bible", provider: "bolls" },
   { code: "RSV", bollsCode: "RSV", name: "Revised Standard Version", provider: "bolls" },
-  { code: "MSG", bollsCode: "MSG", name: "The Message", provider: "bolls" }
+  { code: "MSG", bollsCode: "MSG", name: "The Message", provider: "bolls" },
+  { code: "CSB", bollsCode: "CSB17", name: "Christian Standard Bible", provider: "bolls" },
+  { code: "NIRV", bollsCode: "NIRV", name: "New International Reader's Version", provider: "bolls" },
+  { code: "BSB", bollsCode: "BSB", name: "Berean Standard Bible", provider: "bolls" },
+  { code: "TLV", bollsCode: "TLV", name: "Tree of Life Version", provider: "bolls" },
+  { code: "CEB", bollsCode: "CEB", name: "Common English Bible", provider: "bolls" }
 ];
 
 async function sleep(ms) {
