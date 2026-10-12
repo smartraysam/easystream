@@ -345,6 +345,8 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
           if (vIdx !== -1) {
             targetSlideIdx = splitMode === 'double' ? Math.floor(vIdx / 2) : vIdx;
           }
+        } else if (selectedSlideIndex > 0) {
+          targetSlideIdx = Math.min(selectedSlideIndex, data.verses.length - 1);
         }
         setSelectedSlideIndex(targetSlideIdx);
 
@@ -644,7 +646,7 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
         {/* Center: PRIMARY GO LIVE BUTTON & LOCAL CACHE BADGE (MOVED TO TOP HEADER) */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
           {/* LOCAL CACHE / SOURCE BADGE */}
-          {scriptureResult?.source === 'local' ? (
+          {/* {scriptureResult?.source === 'local' ? (
             <div
               style={{
                 display: 'flex',
@@ -683,11 +685,11 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
               <Globe size={13} />
               <span>ONLINE BIBLE</span>
             </div>
-          )}
+          )} */}
 
 
           {/* PRIMARY GO LIVE BUTTON IN TOP HEADER */}
-          <button
+          {/* <button
             onClick={() => handleGoLive(selectedSlideIndex)}
             style={{
               display: 'flex',
@@ -709,10 +711,10 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
           >
             <Radio size={16} />
             <span>GO LIVE (Enter)</span>
-          </button>
+          </button> */}
 
           {/* Live indicator badge */}
-          <div
+          {/* <div
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -736,7 +738,7 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
               }}
             />
             <span>{isLiveScriptureCategory ? 'LIVE ON SCREEN' : 'STANDBY'}</span>
-          </div>
+          </div> */}
         </div>
 
         {/* Right Actions: Display Screen & Studio Switcher */}
@@ -1476,8 +1478,10 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
               onChange={(e) => {
                 const newVer = e.target.value;
                 setSelectedVersion(newVer);
-                if (searchQuery.trim()) {
-                  fetchScripture(searchQuery, newVer, false);
+                const targetQuery = scriptureResult?.reference || searchQuery.trim();
+                const currentVerseNum = scriptureResult?.verses?.[selectedSlideIndex]?.verse ?? null;
+                if (targetQuery) {
+                  fetchScripture(targetQuery, newVer, true, currentVerseNum);
                 }
               }}
               style={{
