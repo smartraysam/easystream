@@ -9,7 +9,7 @@ export default defineConfig({
     host: true,
     proxy: {
       '/ws': {
-        target: 'ws://127.0.0.1:3000',
+        target: 'ws://127.0.0.1:3004',
         ws: true,
         changeOrigin: true,
         configure: (proxy) => {
@@ -19,7 +19,7 @@ export default defineConfig({
         },
       },
       '/api': {
-        target: 'http://127.0.0.1:3000',
+        target: 'http://127.0.0.1:3004',
         changeOrigin: true,
       },
     },

@@ -231,9 +231,9 @@ export const OnlineLyricsSearchModal: React.FC<OnlineLyricsSearchModalProps> = (
       return;
     }
 
-    if (suggestion.song) {
-      handleSelectSong(suggestion.song);
-    }
+    // For online catalog suggestions, clear current selection so the
+    // search query automatically fetches and selects the online song
+    setSelectedSong(null);
   };
 
   const handleGoLiveLyrics = () => {

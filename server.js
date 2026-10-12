@@ -1320,6 +1320,8 @@ const server = http.createServer((req, res) => {
     pathname = "/index.html";
   } else if (pathname === "/timer.html" || pathname === "/timer" || pathname === "/countdown.html" || pathname === "/countdown") {
     pathname = "/index.html";
+  } else if (pathname === "/v2.html" || pathname === "/v2") {
+    pathname = "/index.html";
   } else if (pathname === "/") {
     pathname = "/index.html";
   }

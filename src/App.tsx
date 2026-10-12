@@ -12,6 +12,7 @@ import { StageView } from './components/StageView';
 import { TimerDisplayView } from './components/TimerDisplayView';
 import { TimerModal } from './components/TimerModal';
 import { SessionModal } from './components/SessionModal';
+import { V2Presenter } from './components/V2Presenter';
 import { LibraryItem, ScheduleItem } from './types';
 
 export const App: React.FC = () => {
@@ -63,6 +64,27 @@ export const App: React.FC = () => {
   const [isTimerOpen, setIsTimerOpen] = useState(false);
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
 
+  // Handle adding an item from library to the active schedule
+  const handleAddToSchedule = (item: LibraryItem) => {
+    const newScheduleItem: ScheduleItem = {
+      id: `sched-item-${Date.now()}`,
+      libraryItemId: item.id,
+      title: item.title,
+      category: item.category,
+      lines: item.lines,
+      themeOverride: item.themeOverride,
+    };
+    updateSchedule([...state.schedule, newScheduleItem]);
+  };
+
+  // Handle instantly presenting an item live
+  const handleGoLiveWithLibraryItem = (item: LibraryItem) => {
+    setLines(item.title, item.author || '', item.lines, item.category);
+    if (item.themeOverride) {
+      updateTheme(item.themeOverride);
+    }
+  };
+
   // Simple client-side route checking
   const pathname = window.location.pathname;
   const searchParams = new URLSearchParams(window.location.search);
@@ -88,26 +110,26 @@ export const App: React.FC = () => {
     );
   }
 
-  // Handle adding an item from library to the active schedule
-  const handleAddToSchedule = (item: LibraryItem) => {
-    const newScheduleItem: ScheduleItem = {
-      id: `sched-item-${Date.now()}`,
-      libraryItemId: item.id,
-      title: item.title,
-      category: item.category,
-      lines: item.lines,
-      themeOverride: item.themeOverride,
-    };
-    updateSchedule([...state.schedule, newScheduleItem]);
-  };
-
-  // Handle instantly presenting an item live
-  const handleGoLiveWithLibraryItem = (item: LibraryItem) => {
-    setLines(item.title, item.author || '', item.lines, item.category);
-    if (item.themeOverride) {
-      updateTheme(item.themeOverride);
-    }
-  };
+  if (pathname === '/v2' || pathname === '/v2.html' || searchParams.get('v2') === '1' || searchParams.get('mode') === 'v2') {
+    return (
+      <V2Presenter
+        state={state}
+        sessionId={sessionId}
+        isConnected={isConnected}
+        onSetLines={setLines}
+        onJumpTo={jumpTo}
+        onUpdateLiveState={updateLiveState}
+        onStartTimer={startTimer}
+        onPauseTimer={pauseTimer}
+        onResetTimer={resetTimer}
+        adjustTimer={adjustTimer}
+        setTimerConfig={setTimerConfig}
+        setTimerPrompt={setTimerPrompt}
+        onSaveLibraryItem={saveLibraryItem}
+        onAddToSchedule={handleAddToSchedule}
+      />
+    );
+  }
 
   return (
     <div className="studio-container">

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Tv, 
   Layers, 
@@ -13,7 +13,10 @@ import {
   Search,
   Clock,
   Download,
-  Check
+  Check,
+  ChevronDown,
+  SlidersHorizontal,
+  EyeOff
 } from 'lucide-react';
 import { LiveState, TimerState } from '../types';
 import { usePWAInstall } from '../hooks/usePWAInstall';
@@ -54,9 +57,37 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [isAlertModalOpen, setIsAlertModalOpen] = useState(false);
   const [isResetModalOpen, setIsResetModalOpen] = useState(false);
+  const [isDisplaysDropdownOpen, setIsDisplaysDropdownOpen] = useState(false);
+  const displaysDropdownRef = useRef<HTMLDivElement | null>(null);
+  const [isOptionsDropdownOpen, setIsOptionsDropdownOpen] = useState(false);
+  const optionsDropdownRef = useRef<HTMLDivElement | null>(null);
   // const [installSuccessToast, setInstallSuccessToast] = useState(false);
   const [alertText, setAlertText] = useState(liveState.quickAlert || '');
   const [now, setNow] = useState(Date.now());
+
+  // Close dropdowns on outside click or Escape
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (displaysDropdownRef.current && !displaysDropdownRef.current.contains(e.target as Node)) {
+        setIsDisplaysDropdownOpen(false);
+      }
+      if (optionsDropdownRef.current && !optionsDropdownRef.current.contains(e.target as Node)) {
+        setIsOptionsDropdownOpen(false);
+      }
+    };
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsDisplaysDropdownOpen(false);
+        setIsOptionsDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    window.addEventListener('keydown', handleEsc);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      window.removeEventListener('keydown', handleEsc);
+    };
+  }, []);
 
   // const { isInstallable, isInstalled, promptInstall } = usePWAInstall();
 
@@ -185,7 +216,7 @@ export const Header: React.FC<HeaderProps> = ({
           color: isConnected ? '#34d399' : '#f87171',
         }}>
           <Circle size={8} fill={isConnected ? '#10b981' : '#ef4444'} color="transparent" />
-          <span>{isConnected ? 'LIVE SYNC ACTIVE' : 'RECONNECTING…'}</span>
+          <span>{isConnected ? 'LIVE' : 'RECONNECTING…'}</span>
         </div>
 
         {/* Interactive Session Badge */}
@@ -210,33 +241,278 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
       </div>
 
-      {/* Center: EasyWorship Live Panic & Control Buttons */}
+      {/* Center: Live Options & Controls Bar */}
       <div className="panic-bar">
-        <button
-          className={`panic-btn black ${liveState.isBlackout ? 'active' : ''}`}
-          onClick={toggleBlackout}
-          title="Instant Blackout: turns output black"
-        >
-          <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#ef4444' }} />
-          BLACK
-        </button>
+        {/* Output Options Dropdown (Black, Clear, Logo) */}
+        <div style={{ position: 'relative' }} ref={optionsDropdownRef}>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setIsOptionsDropdownOpen((prev) => !prev)}
+            style={{
+              fontSize: '12px',
+              padding: '6px 12px',
+              background: liveState.isBlackout
+                ? 'rgba(239, 68, 68, 0.25)'
+                : liveState.isClearText
+                  ? 'rgba(59, 130, 246, 0.25)'
+                  : liveState.isLogo
+                    ? 'rgba(245, 158, 11, 0.25)'
+                    : isOptionsDropdownOpen
+                      ? 'rgba(255, 255, 255, 0.12)'
+                      : 'rgba(255, 255, 255, 0.06)',
+              borderColor: liveState.isBlackout
+                ? '#ef4444'
+                : liveState.isClearText
+                  ? '#3b82f6'
+                  : liveState.isLogo
+                    ? '#f59e0b'
+                    : isOptionsDropdownOpen
+                      ? 'rgba(255, 255, 255, 0.25)'
+                      : 'rgba(255, 255, 255, 0.12)',
+              color: liveState.isBlackout
+                ? '#f87171'
+                : liveState.isClearText
+                  ? '#60a5fa'
+                  : liveState.isLogo
+                    ? '#fbbf24'
+                    : '#cbd5e1',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: liveState.isBlackout
+                ? '0 0 12px rgba(239, 68, 68, 0.4)'
+                : liveState.isClearText
+                  ? '0 0 12px rgba(59, 130, 246, 0.4)'
+                  : liveState.isLogo
+                    ? '0 0 12px rgba(245, 158, 11, 0.4)'
+                    : 'none',
+            }}
+            title="Display live override options: Blackout, Clear Text, Logo"
+          >
+            <SlidersHorizontal size={13} />
+            <span>
+              {liveState.isBlackout
+                ? 'BLACKOUT'
+                : liveState.isClearText
+                  ? 'CLEAR TEXT'
+                  : liveState.isLogo
+                    ? 'LOGO'
+                    : 'Options'}
+            </span>
+            {(liveState.isBlackout || liveState.isClearText || liveState.isLogo) && (
+              <span
+                style={{
+                  width: '6px',
+                  height: '6px',
+                  borderRadius: '50%',
+                  background: liveState.isBlackout
+                    ? '#ef4444'
+                    : liveState.isClearText
+                      ? '#3b82f6'
+                      : '#f59e0b',
+                }}
+              />
+            )}
+            <ChevronDown
+              size={12}
+              style={{
+                transform: isOptionsDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 0.18s ease',
+                opacity: 0.8,
+              }}
+            />
+          </button>
 
-        <button
-          className={`panic-btn clear ${liveState.isClearText ? 'active' : ''}`}
-          onClick={toggleClearText}
-          title="Clear Text: hides lyrics/scripture while retaining background"
-        >
-          CLEAR
-        </button>
+          {isOptionsDropdownOpen && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 'calc(100% + 6px)',
+                left: 0,
+                width: '240px',
+                background: '#0b1120',
+                border: '1.5px solid rgba(255, 255, 255, 0.15)',
+                borderRadius: '10px',
+                boxShadow: '0 20px 45px rgba(0, 0, 0, 0.85), 0 0 20px rgba(0, 0, 0, 0.5)',
+                padding: '6px',
+                zIndex: 1000,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '4px',
+              }}
+            >
+              <div
+                style={{
+                  padding: '6px 10px 4px',
+                  fontSize: '10px',
+                  fontWeight: 800,
+                  color: '#64748b',
+                  letterSpacing: '0.05em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                Live Output Options
+              </div>
 
-        <button
-          className={`panic-btn logo ${liveState.isLogo ? 'active' : ''}`}
-          onClick={toggleLogo}
-          title="Logo Mode: displays church logo / placeholder"
-        >
-          <ImageIcon size={13} />
-          LOGO
-        </button>
+              {/* 1. Blackout */}
+              <button
+                type="button"
+                onClick={toggleBlackout}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '8px 10px',
+                  borderRadius: '7px',
+                  background: liveState.isBlackout
+                    ? 'rgba(239, 68, 68, 0.2)'
+                    : 'transparent',
+                  border: liveState.isBlackout
+                    ? '1px solid #ef4444'
+                    : '1px solid transparent',
+                  color: liveState.isBlackout ? '#f87171' : '#ffffff',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'background 0.12s',
+                }}
+                onMouseEnter={(e) => {
+                  if (!liveState.isBlackout) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                }}
+                onMouseLeave={(e) => {
+                  if (!liveState.isBlackout) e.currentTarget.style.background = 'transparent';
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+                  <span
+                    style={{
+                      width: '10px',
+                      height: '10px',
+                      borderRadius: '50%',
+                      background: '#ef4444',
+                      boxShadow: liveState.isBlackout ? '0 0 8px #ef4444' : 'none',
+                    }}
+                  />
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '12px' }}>Black Screen (BLACK)</div>
+                    <div style={{ fontSize: '10px', color: '#94a3b8' }}>Instant blackout on displays</div>
+                  </div>
+                </div>
+                <span
+                  style={{
+                    fontSize: '10px',
+                    fontWeight: 800,
+                    padding: '2px 6px',
+                    borderRadius: '4px',
+                    background: liveState.isBlackout ? '#ef4444' : 'rgba(255, 255, 255, 0.08)',
+                    color: liveState.isBlackout ? '#ffffff' : '#64748b',
+                  }}
+                >
+                  {liveState.isBlackout ? 'ON' : 'OFF'}
+                </span>
+              </button>
+
+              {/* 2. Clear Text */}
+              <button
+                type="button"
+                onClick={toggleClearText}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '8px 10px',
+                  borderRadius: '7px',
+                  background: liveState.isClearText
+                    ? 'rgba(59, 130, 246, 0.2)'
+                    : 'transparent',
+                  border: liveState.isClearText
+                    ? '1px solid #3b82f6'
+                    : '1px solid transparent',
+                  color: liveState.isClearText ? '#60a5fa' : '#ffffff',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'background 0.12s',
+                }}
+                onMouseEnter={(e) => {
+                  if (!liveState.isClearText) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                }}
+                onMouseLeave={(e) => {
+                  if (!liveState.isClearText) e.currentTarget.style.background = 'transparent';
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+                  <EyeOff size={14} color="#3b82f6" />
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '12px' }}>Clear Text (CLEAR)</div>
+                    <div style={{ fontSize: '10px', color: '#94a3b8' }}>Hide text, retain background</div>
+                  </div>
+                </div>
+                <span
+                  style={{
+                    fontSize: '10px',
+                    fontWeight: 800,
+                    padding: '2px 6px',
+                    borderRadius: '4px',
+                    background: liveState.isClearText ? '#3b82f6' : 'rgba(255, 255, 255, 0.08)',
+                    color: liveState.isClearText ? '#ffffff' : '#64748b',
+                  }}
+                >
+                  {liveState.isClearText ? 'ON' : 'OFF'}
+                </span>
+              </button>
+
+              {/* 3. Logo Mode */}
+              <button
+                type="button"
+                onClick={toggleLogo}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '8px 10px',
+                  borderRadius: '7px',
+                  background: liveState.isLogo
+                    ? 'rgba(245, 158, 11, 0.2)'
+                    : 'transparent',
+                  border: liveState.isLogo
+                    ? '1px solid #f59e0b'
+                    : '1px solid transparent',
+                  color: liveState.isLogo ? '#fbbf24' : '#ffffff',
+                  cursor: 'pointer',
+                  textAlign: 'left',
+                  transition: 'background 0.12s',
+                }}
+                onMouseEnter={(e) => {
+                  if (!liveState.isLogo) e.currentTarget.style.background = 'rgba(255, 255, 255, 0.05)';
+                }}
+                onMouseLeave={(e) => {
+                  if (!liveState.isLogo) e.currentTarget.style.background = 'transparent';
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+                  <ImageIcon size={14} color="#f59e0b" />
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: '12px' }}>Church Logo (LOGO)</div>
+                    <div style={{ fontSize: '10px', color: '#94a3b8' }}>Display church logo overlay</div>
+                  </div>
+                </div>
+                <span
+                  style={{
+                    fontSize: '10px',
+                    fontWeight: 800,
+                    padding: '2px 6px',
+                    borderRadius: '4px',
+                    background: liveState.isLogo ? '#f59e0b' : 'rgba(255, 255, 255, 0.08)',
+                    color: liveState.isLogo ? '#ffffff' : '#64748b',
+                  }}
+                >
+                  {liveState.isLogo ? 'ON' : 'OFF'}
+                </span>
+              </button>
+            </div>
+          )}
+        </div>
 
         <button
           className="btn"
@@ -359,7 +635,7 @@ export const Header: React.FC<HeaderProps> = ({
           title="Search song lyrics and worship songs online"
         >
           <Search size={13} />
-          Search Lyrics
+           Lyrics
         </button>
         <button 
           className="btn"
@@ -370,48 +646,266 @@ export const Header: React.FC<HeaderProps> = ({
           Library
         </button>
 
-        <div style={{ display: 'flex', gap: '4px' }}>
-          <a
-            href="/display"
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => openBorderlessWindow('/display', 'easypresenter_display', e)}
-            className="btn"
-            style={{ fontSize: '12px', padding: '6px 10px', textDecoration: 'none' }}
-            title="Open Fullscreen Display Window without address bar (for Projector / TV)"
-          >
-            <Tv size={13} />
-            Display
-            <ExternalLink size={11} style={{ opacity: 0.6 }} />
-          </a>
+        <a
+          href="/v2"
+          className="btn"
+          style={{
+            fontSize: '12px',
+            padding: '6px 12px',
+            background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.2) 0%, rgba(59, 130, 246, 0.2) 100%)',
+            borderColor: 'rgba(56, 189, 248, 0.4)',
+            color: '#38bdf8',
+            fontWeight: 800,
+            textDecoration: 'none',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            boxShadow: '0 0 12px rgba(56, 189, 248, 0.15)',
+          }}
+          title="Open Simple V2 Scripture & Countdown Presenter"
+        >
+          <BookOpen size={13} />
+          V2 Presenter
+        </a>
 
-          <a
-            href="/display?overlay=1"
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => openBorderlessWindow('/display?overlay=1', 'easypresenter_vmix', e)}
-            className="btn"
-            style={{ fontSize: '12px', padding: '6px 10px', textDecoration: 'none', background: 'rgba(59, 130, 246, 0.15)', color: '#60a5fa' }}
-            title="Open vMix / OBS Alpha-channel broadcast overlay"
-          >
-            <Layers size={13} />
-            vMix
-            <ExternalLink size={11} style={{ opacity: 0.6 }} />
-          </a>
+        {/* Subtle vertical separator */}
+        <div style={{ width: '1px', height: '20px', background: 'rgba(255, 255, 255, 0.1)', margin: '0 2px' }} />
 
-          <a
-            href="/timer"
-            target="_blank"
-            rel="noopener noreferrer"
-            onClick={(e) => openBorderlessWindow('/timer', 'easypresenter_timer', e)}
+        {/* Displays & Output Screens Dropdown */}
+        <div style={{ position: 'relative' }} ref={displaysDropdownRef}>
+          <button
+            type="button"
             className="btn"
-            style={{ fontSize: '12px', padding: '6px 10px', textDecoration: 'none', background: 'rgba(14, 165, 233, 0.15)', color: '#38bdf8' }}
-            title="Open Countdown & Overtime Display in a borderless window"
+            onClick={() => setIsDisplaysDropdownOpen((prev) => !prev)}
+            style={{
+              fontSize: '12px',
+              padding: '6px 12px',
+              background: isDisplaysDropdownOpen
+                ? 'rgba(56, 189, 248, 0.2)'
+                : 'rgba(255, 255, 255, 0.08)',
+              borderColor: isDisplaysDropdownOpen
+                ? '#38bdf8'
+                : 'rgba(255, 255, 255, 0.16)',
+              color: isDisplaysDropdownOpen ? '#38bdf8' : '#ffffff',
+              fontWeight: 700,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: isDisplaysDropdownOpen
+                ? '0 0 14px rgba(56, 189, 248, 0.25)'
+                : 'none',
+            }}
+            title="Open audience display, vMix overlay, timer, or stage monitor"
           >
-            <Clock size={13} />
-            Timer
-            <ExternalLink size={11} style={{ opacity: 0.6 }} />
-          </a>
+            <Tv size={13} color="#38bdf8" />
+            <span>Displays</span>
+            <ChevronDown
+              size={12}
+              style={{
+                transform: isDisplaysDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                transition: 'transform 0.18s ease',
+                opacity: 0.8,
+              }}
+            />
+          </button>
+
+          {isDisplaysDropdownOpen && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 'calc(100% + 6px)',
+                right: 0,
+                width: '260px',
+                background: '#0b1120',
+                border: '1.5px solid rgba(56, 189, 248, 0.35)',
+                borderRadius: '10px',
+                boxShadow: '0 20px 45px rgba(0, 0, 0, 0.85), 0 0 25px rgba(56, 189, 248, 0.2)',
+                padding: '6px',
+                zIndex: 1000,
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '3px',
+              }}
+            >
+              <div
+                style={{
+                  padding: '6px 10px 4px',
+                  fontSize: '10px',
+                  fontWeight: 800,
+                  color: '#64748b',
+                  letterSpacing: '0.05em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                Output Screens & Overlays
+              </div>
+
+              {/* 1. Main Display */}
+              <a
+                href="/display"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => {
+                  openBorderlessWindow('/display', 'easypresenter_display', e);
+                  setIsDisplaysDropdownOpen(false);
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '8px 10px',
+                  borderRadius: '7px',
+                  color: '#ffffff',
+                  textDecoration: 'none',
+                  fontSize: '12px',
+                  transition: 'background 0.12s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(56, 189, 248, 0.14)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+                  <Tv size={15} color="#38bdf8" />
+                  <div>
+                    <div style={{ fontWeight: 700, color: '#f8fafc' }}>Projector / TV Display</div>
+                    <div style={{ fontSize: '10px', color: '#94a3b8' }}>Main audience screen (/display)</div>
+                  </div>
+                </div>
+                <ExternalLink size={12} color="#64748b" />
+              </a>
+
+              {/* 2. vMix / OBS Overlay */}
+              <a
+                href="/display?overlay=1"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => {
+                  openBorderlessWindow('/display?overlay=1', 'easypresenter_vmix', e);
+                  setIsDisplaysDropdownOpen(false);
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '8px 10px',
+                  borderRadius: '7px',
+                  color: '#ffffff',
+                  textDecoration: 'none',
+                  fontSize: '12px',
+                  transition: 'background 0.12s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(59, 130, 246, 0.15)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+                  <Layers size={15} color="#60a5fa" />
+                  <div>
+                    <div style={{ fontWeight: 700, color: '#60a5fa' }}>vMix / OBS Overlay</div>
+                    <div style={{ fontSize: '10px', color: '#94a3b8' }}>Alpha-channel broadcast overlay</div>
+                  </div>
+                </div>
+                <ExternalLink size={12} color="#64748b" />
+              </a>
+
+              {/* 3. Timer Screen */}
+              <a
+                href="/timer"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => {
+                  openBorderlessWindow('/timer', 'easypresenter_timer', e);
+                  setIsDisplaysDropdownOpen(false);
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '8px 10px',
+                  borderRadius: '7px',
+                  color: '#ffffff',
+                  textDecoration: 'none',
+                  fontSize: '12px',
+                  transition: 'background 0.12s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(14, 165, 233, 0.15)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+                  <Clock size={15} color="#38bdf8" />
+                  <div>
+                    <div style={{ fontWeight: 700, color: '#38bdf8' }}>Countdown Timer Display</div>
+                    <div style={{ fontSize: '10px', color: '#94a3b8' }}>Full clock & overtime monitor</div>
+                  </div>
+                </div>
+                <ExternalLink size={12} color="#64748b" />
+              </a>
+
+              {/* 4. vMix Timer Overlay */}
+              <a
+                href="/timer?overlay=1"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => {
+                  openBorderlessWindow('/timer?overlay=1', 'easypresenter_vmix_timer', e);
+                  setIsDisplaysDropdownOpen(false);
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '8px 10px',
+                  borderRadius: '7px',
+                  color: '#ffffff',
+                  textDecoration: 'none',
+                  fontSize: '12px',
+                  transition: 'background 0.12s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(16, 185, 129, 0.15)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+                  <Clock size={15} color="#34d399" />
+                  <div>
+                    <div style={{ fontWeight: 700, color: '#34d399' }}>vMix Timer Overlay</div>
+                    <div style={{ fontSize: '10px', color: '#94a3b8' }}>Lower-third countdown overlay</div>
+                  </div>
+                </div>
+                <ExternalLink size={12} color="#64748b" />
+              </a>
+
+              {/* 5. Stage Monitor */}
+              <a
+                href="/stage"
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => {
+                  openBorderlessWindow('/stage', 'easypresenter_stage', e);
+                  setIsDisplaysDropdownOpen(false);
+                }}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '8px 10px',
+                  borderRadius: '7px',
+                  color: '#ffffff',
+                  textDecoration: 'none',
+                  fontSize: '12px',
+                  transition: 'background 0.12s',
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(168, 85, 247, 0.15)')}
+                onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '9px' }}>
+                  <Mic2 size={15} color="#c084fc" />
+                  <div>
+                    <div style={{ fontWeight: 700, color: '#c084fc' }}>Stage Monitor</div>
+                    <div style={{ fontSize: '10px', color: '#94a3b8' }}>Confidence screen for singers</div>
+                  </div>
+                </div>
+                <ExternalLink size={12} color="#64748b" />
+              </a>
+            </div>
+          )}
         </div>
 
         <button
