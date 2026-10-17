@@ -4,6 +4,12 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { WebSocketServer, WebSocket } from "ws";
 import os from "os";
+import {
+  searchMultiTierLyrics,
+  getLyricsDetails,
+  getLyricsConfig,
+  saveLyricsConfig,
+} from "./services/lyricsService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1058,51 +1064,17 @@ const server = http.createServer((req, res) => {
     return;
   }
 
-  // Online Lyrics Search Proxy Endpoint
+  // Online Lyrics Search Proxy Endpoint (Multi-Tier Google & Web Cascade)
   if (pathname === "/api/lyrics/search") {
     const query = parsedUrl.searchParams.get("q") || "";
     if (!query.trim()) {
-      res.writeHead(200, { "Content-Type": "application/json" });
+      res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
       res.end(JSON.stringify({ results: [] }));
       return;
     }
 
-    // Fetch from LRCLIB open API
-    const targetUrl = `https://lrclib.net/api/search?q=${encodeURIComponent(query.trim())}`;
-
-    fetch(targetUrl, {
-      headers: {
-        "User-Agent":
-          "EasyPresenterStudio/2.0 (https://github.com/EasyPresenter)",
-      },
-    })
-      .then((r) => r.json())
-      .then((data) => {
-        const results = (Array.isArray(data) ? data : [])
-          .filter((item) => item.plainLyrics || item.syncedLyrics)
-          .slice(0, 15)
-          .map((item) => {
-            const raw =
-              item.plainLyrics ||
-              (item.syncedLyrics
-                ? item.syncedLyrics.replace(/\[\d+:\d+\.\d+\]\s*/g, "")
-                : "");
-            const snippet = raw
-              .split("\n")
-              .filter(Boolean)
-              .slice(0, 3)
-              .join(" • ");
-            return {
-              id: `online-${item.id || Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-              trackName: item.trackName || item.name || query,
-              artistName: item.artistName || item.artist || "Unknown Artist",
-              albumName: item.albumName || "",
-              duration: item.duration || 0,
-              snippet: snippet || "",
-              plainLyrics: raw.trim(),
-            };
-          });
-
+    searchMultiTierLyrics(query.trim())
+      .then((results) => {
         res.writeHead(200, {
           "Content-Type": "application/json",
           "Access-Control-Allow-Origin": "*",
@@ -1110,15 +1082,72 @@ const server = http.createServer((req, res) => {
         res.end(JSON.stringify({ results }));
       })
       .catch((err) => {
-        console.error("Online lyric search error:", err.message);
-        res.writeHead(200, { "Content-Type": "application/json" });
+        console.error("Lyrics search error:", err.message);
+        res.writeHead(200, {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        });
         res.end(
           JSON.stringify({
             results: [],
-            error: "Failed to query online lyric provider",
+            error: "Failed to query lyrics providers",
           }),
         );
       });
+    return;
+  }
+
+  // Online Lyrics Details Fetch Endpoint (Lazy-loading lyrics)
+  if (pathname === "/api/lyrics/details") {
+    const songId = parsedUrl.searchParams.get("id") || "";
+    const sourceUrl = parsedUrl.searchParams.get("url") || "";
+
+    getLyricsDetails(songId, sourceUrl)
+      .then((details) => {
+        res.writeHead(200, {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        });
+        res.end(JSON.stringify({ result: details }));
+      })
+      .catch((err) => {
+        console.error("Lyrics details error:", err.message);
+        res.writeHead(200, {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        });
+        res.end(JSON.stringify({ result: null, error: err.message }));
+      });
+    return;
+  }
+
+  // Lyrics Config Endpoint (Google API Key / Engine ID)
+  if (pathname === "/api/lyrics/config") {
+    if (req.method === "POST") {
+      let body = "";
+      req.on("data", (chunk) => (body += chunk));
+      req.on("end", () => {
+        try {
+          const parsed = JSON.parse(body || "{}");
+          saveLyricsConfig(parsed);
+          res.writeHead(200, {
+            "Content-Type": "application/json",
+            "Access-Control-Allow-Origin": "*",
+          });
+          res.end(JSON.stringify({ status: "ok", config: getLyricsConfig() }));
+        } catch (e) {
+          res.writeHead(400, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+          res.end(JSON.stringify({ error: "Invalid JSON" }));
+        }
+      });
+      return;
+    }
+
+    res.writeHead(200, {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+    });
+    res.end(JSON.stringify({ config: getLyricsConfig() }));
     return;
   }
 

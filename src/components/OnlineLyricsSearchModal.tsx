@@ -31,6 +31,9 @@ interface OnlineSongResult {
   plainLyrics: string;
   isLocal?: boolean;
   localItem?: LibraryItem;
+  source?: 'google' | 'genius' | 'lrclib' | 'local';
+  sourceUrl?: string;
+  artworkUrl?: string;
 }
 
 interface OnlineLyricsSearchModalProps {
@@ -206,15 +209,40 @@ export const OnlineLyricsSearchModal: React.FC<OnlineLyricsSearchModalProps> = (
     };
   };
 
-  const handleSelectSong = (song: OnlineSongResult) => {
+  const handleSelectSong = async (song: OnlineSongResult) => {
     setSelectedSong(song);
     setShowLyricSuggestions(false);
+
+    let fullLyrics = song.plainLyrics;
+    let currentSong = song;
+
+    if (!fullLyrics || fullLyrics.length < 20) {
+      try {
+        const apiBase = import.meta.env.VITE_API_URL || '';
+        const res = await fetch(
+          `${apiBase}/api/lyrics/details?id=${encodeURIComponent(song.id)}&url=${encodeURIComponent(song.sourceUrl || '')}`
+        );
+        const data = await res.json();
+        if (data.result?.plainLyrics) {
+          fullLyrics = data.result.plainLyrics;
+          currentSong = {
+            ...song,
+            plainLyrics: fullLyrics,
+            snippet: data.result.snippet || song.snippet,
+          };
+          setSelectedSong(currentSong);
+          setOnlineSongResults(prev => prev.map(s => s.id === song.id ? currentSong : s));
+        }
+      } catch (err) {
+        console.error('Failed to load lyrics details:', err);
+      }
+    }
     
-    // Auto-save online songs to library
-    if (!song.isLocal) {
-      const item = getLibraryItemFromSong(song, lyricsSplitMode);
+    // Auto-save online songs to library if lyrics are available
+    if (!currentSong.isLocal && fullLyrics && fullLyrics.length > 20) {
+      const item = getLibraryItemFromSong(currentSong, lyricsSplitMode);
       onSaveLibraryItem(item);
-      setLyricsSavedFeedback(`"${song.trackName}" auto-saved to library!`);
+      setLyricsSavedFeedback(`"${currentSong.trackName}" auto-saved to library!`);
       setTimeout(() => setLyricsSavedFeedback(null), 3000);
     }
   };
@@ -306,17 +334,20 @@ export const OnlineLyricsSearchModal: React.FC<OnlineLyricsSearchModalProps> = (
                 <span style={{
                   fontSize: '11px',
                   padding: '2px 8px',
-                  background: 'rgba(59, 130, 246, 0.15)',
-                  border: '1px solid rgba(59, 130, 246, 0.3)',
+                  background: 'rgba(59, 130, 246, 0.18)',
+                  border: '1px solid rgba(59, 130, 246, 0.35)',
                   color: '#60a5fa',
                   borderRadius: '999px',
                   fontWeight: 700,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
                 }}>
-                  LOCAL & ONLINE
+                  <Globe size={11} /> GOOGLE & WEB
                 </span>
               </div>
               <div style={{ fontSize: '12px', color: '#94a3b8' }}>
-                Search your local church library first, or find worship songs across online lyric databases
+                Find any worship song, gospel anthem, or hymn powered by Google & web lyrics search
               </div>
             </div>
           </div>
@@ -611,7 +642,7 @@ export const OnlineLyricsSearchModal: React.FC<OnlineLyricsSearchModalProps> = (
                         </div>
 
                         <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          {isLocal && (
+                          {isLocal ? (
                             <span style={{
                               fontSize: '10px',
                               fontWeight: 700,
@@ -620,7 +651,42 @@ export const OnlineLyricsSearchModal: React.FC<OnlineLyricsSearchModalProps> = (
                               background: 'rgba(16, 185, 129, 0.15)',
                               color: '#34d399',
                             }}>
-                              Saved Locally
+                              Saved in Bank
+                            </span>
+                          ) : song.source === 'google' ? (
+                            <span style={{
+                              fontSize: '10px',
+                              fontWeight: 700,
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              background: 'rgba(59, 130, 246, 0.18)',
+                              border: '1px solid rgba(59, 130, 246, 0.35)',
+                              color: '#60a5fa',
+                            }}>
+                              Google
+                            </span>
+                          ) : song.source === 'genius' ? (
+                            <span style={{
+                              fontSize: '10px',
+                              fontWeight: 700,
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              background: 'rgba(234, 179, 8, 0.18)',
+                              border: '1px solid rgba(234, 179, 8, 0.35)',
+                              color: '#facc15',
+                            }}>
+                              Genius
+                            </span>
+                          ) : (
+                            <span style={{
+                              fontSize: '10px',
+                              fontWeight: 700,
+                              padding: '2px 6px',
+                              borderRadius: '4px',
+                              background: 'rgba(139, 92, 246, 0.15)',
+                              color: '#c084fc',
+                            }}>
+                              Online
                             </span>
                           )}
                           <ChevronRight size={15} style={{ opacity: isSelected ? 1 : 0.4, color: isSelected ? '#38bdf8' : undefined }} />

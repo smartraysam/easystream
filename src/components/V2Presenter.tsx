@@ -65,6 +65,9 @@ export interface OnlineSongResult {
   plainLyrics: string;
   isLocal?: boolean;
   localItem?: LibraryItem;
+  source?: 'google' | 'genius' | 'lrclib' | 'local';
+  sourceUrl?: string;
+  artworkUrl?: string;
 }
 
 export const DEFAULT_WORSHIP_SONG: OnlineSongResult = {
@@ -479,10 +482,34 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     };
   }, [lyricsQuery, lyricsScope, activeTab, localSongMatches.length]);
 
-  const handleSelectSong = (song: OnlineSongResult) => {
+  const handleSelectSong = async (song: OnlineSongResult) => {
     setSelectedSong(song);
     setSelectedLyricSlideIndex(0);
     setShowLyricSuggestions(false);
+
+    // If lyrics are not yet fetched (e.g. lazy loaded), fetch details
+    if (!song.plainLyrics || song.plainLyrics.length < 20) {
+      try {
+        const apiBase = import.meta.env.VITE_API_URL || "";
+        const res = await fetch(
+          `${apiBase}/api/lyrics/details?id=${encodeURIComponent(song.id)}&url=${encodeURIComponent(song.sourceUrl || "")}`
+        );
+        const data = await res.json();
+        if (data.result?.plainLyrics) {
+          const updated = {
+            ...song,
+            plainLyrics: data.result.plainLyrics,
+            snippet: data.result.snippet || song.snippet,
+          };
+          setSelectedSong(updated);
+          setOnlineSongResults((prev) =>
+            prev.map((s) => (s.id === song.id ? updated : s))
+          );
+        }
+      } catch (err) {
+        console.error("Error fetching song lyrics details:", err);
+      }
+    }
   };
 
   const handleSelectLyricSuggestion = (sug: LyricSuggestion) => {
@@ -3359,7 +3386,43 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                                 flexShrink: 0,
                               }}
                             >
-                              <HardDrive size={10} /> LOCAL
+                              <HardDrive size={10} /> BANK
+                            </span>
+                          ) : song.source === "google" ? (
+                            <span
+                              style={{
+                                fontSize: "10px",
+                                fontWeight: 800,
+                                padding: "2px 6px",
+                                borderRadius: "4px",
+                                background: "rgba(59, 130, 246, 0.18)",
+                                border: "1px solid rgba(59, 130, 246, 0.35)",
+                                color: "#60a5fa",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "3px",
+                                flexShrink: 0,
+                              }}
+                            >
+                              <Globe size={10} /> GOOGLE
+                            </span>
+                          ) : song.source === "genius" ? (
+                            <span
+                              style={{
+                                fontSize: "10px",
+                                fontWeight: 800,
+                                padding: "2px 6px",
+                                borderRadius: "4px",
+                                background: "rgba(234, 179, 8, 0.18)",
+                                border: "1px solid rgba(234, 179, 8, 0.35)",
+                                color: "#facc15",
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "3px",
+                                flexShrink: 0,
+                              }}
+                            >
+                              <Music size={10} /> GENIUS
                             </span>
                           ) : (
                             <span
