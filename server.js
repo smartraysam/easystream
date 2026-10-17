@@ -1610,6 +1610,16 @@ function resetAllSessionsToDefault() {
   });
 }
 
+server.on("error", (err) => {
+  if (err.code === "EADDRINUSE") {
+    console.error(`\n❌ Error: Port ${PORT} is already in use by another process.`);
+    console.error(`   To free port ${PORT}, run: kill -9 $(lsof -t -i :${PORT})\n`);
+  } else {
+    console.error("Server error:", err);
+  }
+  process.exit(1);
+});
+
 server.listen(PORT, "0.0.0.0", () => {
   const nets = os.networkInterfaces();
   const ips = [];
