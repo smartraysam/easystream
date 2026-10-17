@@ -15,6 +15,35 @@ export interface BibleSuggestion {
   badge?: string;
 }
 
+export interface BibleVersionOption {
+  id: string;
+  name: string;
+  category: string;
+}
+
+export const AVAILABLE_BIBLE_VERSIONS: BibleVersionOption[] = [
+  { id: 'KJV', name: 'King James Version', category: 'Classic' },
+  { id: 'NKJV', name: 'New King James Version', category: 'Modern' },
+  { id: 'NIV', name: 'New International Version', category: 'Modern' },
+  { id: 'ESV', name: 'English Standard Version', category: 'Modern' },
+  { id: 'NLT', name: 'New Living Translation', category: 'Modern' },
+  { id: 'NASB', name: 'New American Standard', category: 'Modern' },
+  { id: 'AMP', name: 'Amplified Bible', category: 'Study' },
+  { id: 'CSB', name: 'Christian Standard Bible', category: 'Modern' },
+  { id: 'WEB', name: 'World English Bible', category: 'Public' },
+  { id: 'ASV', name: 'American Standard Version', category: 'Classic' },
+  { id: 'RSV', name: 'Revised Standard Version', category: 'Classic' },
+  { id: 'MSG', name: 'The Message', category: 'Paraphrase' },
+  { id: 'NIRV', name: "New International Reader's Version", category: 'Modern' },
+  { id: 'BSB', name: 'Berean Standard Bible', category: 'Study' },
+  { id: 'TLV', name: 'Tree of Life Version', category: 'Messianic' },
+  { id: 'CEB', name: 'Common English Bible', category: 'Modern' },
+  { id: 'BBE', name: 'Bible in Basic English', category: 'Basic' },
+  { id: 'DARBY', name: 'Darby Bible', category: 'Classic' },
+  { id: 'DRA', name: 'Douay-Rheims', category: 'Catholic' },
+  { id: 'YLT', name: "Young's Literal Translation", category: 'Literal' },
+];
+
 export const BIBLE_BOOKS: BibleBook[] = [
   // --- Old Testament (39 Books) ---
   {

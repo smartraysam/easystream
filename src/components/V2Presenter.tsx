@@ -25,6 +25,7 @@ import {
   getBibleSuggestions,
   findBestBookMatch,
   BibleSuggestion,
+  AVAILABLE_BIBLE_VERSIONS,
 } from '../data/bibleBooks';
 
 interface OnlineScriptureVerse {
@@ -41,21 +42,6 @@ interface OnlineScriptureResult {
   totalVerses: number;
   source?: 'local' | 'online' | 'offline-fail';
 }
-
-const AVAILABLE_BIBLE_VERSIONS = [
-  { id: 'KJV', name: 'King James Version', category: 'Classic' },
-  { id: 'NKJV', name: 'New King James Version', category: 'Modern' },
-  { id: 'NIV', name: 'New International Version', category: 'Modern' },
-  { id: 'ESV', name: 'English Standard Version', category: 'Modern' },
-  { id: 'NLT', name: 'New Living Translation', category: 'Modern' },
-  { id: 'NASB', name: 'New American Standard', category: 'Modern' },
-  { id: 'AMP', name: 'Amplified Bible', category: 'Study' },
-  { id: 'CSB', name: 'Christian Standard Bible', category: 'Modern' },
-  { id: 'WEB', name: 'World English Bible', category: 'Public' },
-  { id: 'MSG', name: 'The Message', category: 'Paraphrase' },
-  { id: 'BSB', name: 'Berean Standard Bible', category: 'Study' },
-  { id: 'TLV', name: 'Tree of Life Version', category: 'Messianic' },
-];
 
 const POPULAR_SCRIPTURES = [
   { label: 'John 3:16', query: 'John 3:16' },

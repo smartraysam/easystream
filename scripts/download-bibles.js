@@ -92,7 +92,7 @@ export const TARGET_VERSIONS = [
   { code: "ASV", bollsCode: "ASV", name: "American Standard Version", provider: "bolls" },
   { code: "BBE", bollsCode: "bbe", name: "Bible in Basic English", provider: "bible-api" },
   { code: "DARBY", bollsCode: "darby", name: "Darby Bible", provider: "bible-api" },
-  { code: "DRA", bollsCode: "dra", name: "Douay-Rheims", provider: "bible-api" },
+  { code: "DRA", bollsCode: "DRB", name: "Douay-Rheims", provider: "bolls" },
   { code: "YLT", bollsCode: "YLT", name: "Young's Literal Translation", provider: "bolls" },
   { code: "AMP", bollsCode: "AMP", name: "Amplified Bible", provider: "bolls" },
   { code: "RSV", bollsCode: "RSV", name: "Revised Standard Version", provider: "bolls" },

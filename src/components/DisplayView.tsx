@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AppState } from '../types';
-import { Maximize2, Minimize2, Tv, Circle, AlertTriangle, BookOpen } from 'lucide-react';
+import { Maximize2, Minimize2, Tv, Circle, AlertTriangle } from 'lucide-react';
 
 interface DisplayViewProps {
   state: AppState;
@@ -187,7 +187,7 @@ export const DisplayView: React.FC<DisplayViewProps> = ({
   const showTimerWidget =
     queryTimer !== null
       ? queryTimer === '1' || queryTimer === 'true'
-      : (timerState.showOnDisplay ?? true) && (timerState.status !== 'idle' || timerState.remainingSec > 0);
+      : (timerState.showOnDisplay ?? true) && (timerState.status !== 'idle' || timerState.remainingSec > 0 || timerState.durationSec > 0);
 
   const showClockWidget =
     queryClock !== null
@@ -333,9 +333,14 @@ export const DisplayView: React.FC<DisplayViewProps> = ({
     dynamicLineHeight = 1.48;
   }
 
-  const effectiveFontSize = isScriptureCategory
-    ? Math.max(theme.fontSize, 58)
-    : theme.fontSize;
+  // Determine if active text/scripture is currently cleared out or has content
+  const hasLiveText = Boolean(
+    (isScriptureCategory ? cleanVerseText : displayedLine) &&
+    (isScriptureCategory ? cleanVerseText : displayedLine).trim().length > 0 &&
+    state.lines &&
+    state.lines.length > 0
+  );
+  const isTextCleared = liveState.isClearText || !hasLiveText;
 
   return (
     <div
@@ -443,18 +448,20 @@ export const DisplayView: React.FC<DisplayViewProps> = ({
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'flex-start',
-            borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+            borderBottom: isTextCleared ? 'none' : '1px solid rgba(255, 255, 255, 0.08)',
             zIndex: 45,
             pointerEvents: 'none',
+            transition: 'border-bottom 0.3s ease',
           }}
         >
-          {/* Top Left: Cyan Countdown Timer with Matching Underline */}
-          {showTimerWidget ? (
+          {/* Top Left: Cyan Countdown Timer with Matching Underline (shown when text is active) */}
+          {showTimerWidget && !isTextCleared ? (
             <div
               style={{
                 display: 'inline-flex',
                 flexDirection: 'column',
                 alignItems: 'flex-start',
+                animation: 'fadeIn 0.35s cubic-bezier(0.16, 1, 0.3, 1)',
               }}
             >
               {/* Overtime indicator badge */}
@@ -637,131 +644,288 @@ export const DisplayView: React.FC<DisplayViewProps> = ({
       )}
 
       {/* ------------------------------------------------------------- */}
-      {/* 2. MAIN SLIDE CONTENT: SCRIPTURE OR WORSHIP SONG               */}
+      {/* 2. MIDDLE SPACE: HERO COUNTDOWN TIMER (WHEN TEXT CLEARED)     */}
+      {/*    OR MAIN SCRIPTURE / WORSHIP SLIDE CONTENT                  */}
       {/* ------------------------------------------------------------- */}
-      {!liveState.isBlackout && !liveState.isLogo && !liveState.isClearText && (
-        <div
-          style={{
-            maxWidth: '1360px',
-            width: '100%',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: isScriptureCategory ? 'center' : (theme.textAlign === 'left' ? 'flex-start' : theme.textAlign === 'right' ? 'flex-end' : 'center'),
-            textAlign: isScriptureCategory ? 'center' : theme.textAlign,
-            opacity: fading ? 0 : 1,
-            transform: fading ? 'translateY(10px) scale(0.98)' : 'translateY(0) scale(1)',
-            transition: 'opacity 0.2s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
-            padding: '2rem 1.5rem',
-            marginTop: (!liveState.isBlackout && (showTimerWidget || showClockWidget)) ? '5.5rem' : '0',
-            ...(effectiveOverlay && {
-              background: 'rgba(0, 0, 0, 0.65)',
-              padding: '2rem 3rem',
-              borderRadius: '20px',
-              backdropFilter: 'blur(14px)',
-              border: '1px solid rgba(255, 255, 255, 0.18)',
-              boxShadow: '0 12px 40px rgba(0, 0, 0, 0.8)',
-            }),
-          }}
-        >
-          {/* Scripture Specific Layout (Quotation Mark + Adaptive Italic Serif + Flanked Reference) */}
-          {isScriptureCategory ? (
+      {!liveState.isBlackout && !liveState.isLogo && (
+        isTextCleared ? (
+          /* When text is cleared out, Countdown Timer takes the middle space */
+          showTimerWidget ? (
             <div
+              className="display-hero-timer-center"
               style={{
                 display: 'flex',
                 flexDirection: 'column',
                 alignItems: 'center',
+                justifyContent: 'center',
+                textAlign: 'center',
+                animation: 'fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1)',
+                maxWidth: '1280px',
                 width: '100%',
-                position: 'relative',
+                padding: '2.5rem',
+                margin: 'auto 0',
+                borderRadius: '24px',
+                zIndex: 30,
+                ...(effectiveOverlay && {
+                  background: 'rgba(0, 0, 0, 0.65)',
+                  padding: '3rem 4rem',
+                  backdropFilter: 'blur(16px)',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  boxShadow: '0 20px 50px rgba(0, 0, 0, 0.8)',
+                }),
               }}
             >
-              {/* Stylized Double Quotation Mark (Top Left) */}
-              <div
-                style={{
-                  alignSelf: 'flex-start',
-                  marginBottom: '1rem',
-                  opacity: 0.9,
-                  marginLeft: '0.5rem',
-                }}
-              >
-                <svg width="56" height="46" viewBox="0 0 32 28" fill="#2d3139">
-                  <path d="M0 16.5C0 9.8 4.2 3.5 11.8 0L14 4.1C9.6 6.3 7.8 9.3 7.3 12.3H14V28H0V16.5ZM18 16.5C18 9.8 22.2 3.5 29.8 0L32 4.1C27.6 6.3 25.8 9.3 25.3 12.3H32V28H18V16.5Z" />
-                </svg>
-              </div>
-
-              {/* Dynamic Auto-Adjusted Italic Serif Scripture Verse Text */}
-              <div
-                style={{
-                  fontFamily: '"Playfair Display", "Merriweather", "Georgia", serif',
-                  fontSize: dynamicScriptureFontSize,
-                  fontWeight: 600,
-                  fontStyle: 'italic',
-                  color: '#ffffff',
-                  lineHeight: dynamicLineHeight,
-                  letterSpacing: '-0.015em',
-                  textShadow: combinedTextShadow !== 'none' ? combinedTextShadow : '0 2px 20px rgba(0, 0, 0, 0.9)',
-                  whiteSpace: 'pre-line',
-                  wordBreak: 'break-word',
-                  maxWidth: '1440px',
-                }}
-              >
-                {cleanVerseText}
-              </div>
-
-              {/* Flanked Scripture Citation Reference at Bottom */}
-              {citationRef && (
-                <div
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: '20px',
-                    marginTop: '2.5rem',
-                    width: '100%',
-                  }}
-                >
-                  <div style={{ width: '70px', height: '1.5px', background: 'rgba(255, 255, 255, 0.25)' }} />
+              {/* Overtime indicator badge or Event title pill */}
+              {isOvertime ? (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '1.5rem' }}>
                   <span
                     style={{
-                      fontFamily: 'Inter, Montserrat, sans-serif',
-                      fontSize: 'clamp(20px, 2.2vw, 28px)',
-                      fontWeight: 800,
-                      color: '#e2e8f0',
-                      letterSpacing: '0.04em',
+                      background: '#ef4444',
+                      color: '#ffffff',
+                      fontSize: 'clamp(14px, 1.8vw, 22px)',
+                      fontWeight: 900,
+                      letterSpacing: '0.14em',
+                      padding: '5px 18px',
+                      borderRadius: '999px',
+                      boxShadow: '0 0 30px rgba(239, 68, 68, 0.85)',
+                      textTransform: 'uppercase',
                     }}
                   >
-                    {citationRef}
+                    OVERTIME
                   </span>
-                  <div style={{ width: '70px', height: '1.5px', background: 'rgba(255, 255, 255, 0.25)' }} />
+                  {timerState.title && (
+                    <span style={{ fontSize: 'clamp(16px, 1.8vw, 24px)', fontWeight: 800, color: '#fca5a5', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                      {timerState.title}
+                    </span>
+                  )}
+                </div>
+              ) : (
+                timerState.title && (
+                  <div
+                    style={{
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '8px 24px',
+                      borderRadius: '999px',
+                      background: 'rgba(255, 255, 255, 0.08)',
+                      border: '1px solid rgba(255, 255, 255, 0.16)',
+                      backdropFilter: 'blur(12px)',
+                      marginBottom: '1.75rem',
+                      boxShadow: '0 6px 24px rgba(0, 0, 0, 0.35)',
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontSize: 'clamp(14px, 1.6vw, 20px)',
+                        fontWeight: 800,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.16em',
+                        color: '#f1f5f9',
+                      }}
+                    >
+                      {timerState.title}
+                    </span>
+                  </div>
+                )
+              )}
+
+              {/* Giant Hero Timer Digits */}
+              <div
+                style={{
+                  fontFamily: 'Montserrat, "Outfit", "Inter", sans-serif',
+                  fontSize: 'clamp(100px, 17vw, 250px)',
+                  fontWeight: 900,
+                  letterSpacing: '-0.035em',
+                  fontVariantNumeric: 'tabular-nums',
+                  lineHeight: 0.92,
+                  color: isOvertime
+                    ? '#ef4444'
+                    : isCritical
+                      ? '#f97316'
+                      : isWarning
+                        ? '#f59e0b'
+                        : '#60a5fa', // Soft Cyan / Sky Blue
+                  textShadow: isOvertime
+                    ? '0 0 65px rgba(239, 68, 68, 0.95), 0 6px 30px rgba(0, 0, 0, 0.95)'
+                    : isCritical
+                      ? '0 0 55px rgba(249, 115, 22, 0.75), 0 6px 28px rgba(0, 0, 0, 0.95)'
+                      : isWarning
+                        ? '0 0 55px rgba(245, 158, 11, 0.65), 0 6px 28px rgba(0, 0, 0, 0.95)'
+                        : '0 0 55px rgba(96, 165, 250, 0.5), 0 6px 28px rgba(0, 0, 0, 0.95)',
+                  transition: 'color 0.3s ease, text-shadow 0.3s ease',
+                }}
+              >
+                {formattedTimerStr}
+              </div>
+
+              {/* Glowing Underline Accent Bar */}
+              <div
+                style={{
+                  height: '7px',
+                  width: 'clamp(200px, 32vw, 480px)',
+                  background: isOvertime
+                    ? '#ef4444'
+                    : isCritical
+                      ? '#f97316'
+                      : isWarning
+                        ? '#f59e0b'
+                        : '#60a5fa',
+                  borderRadius: '4px',
+                  marginTop: '1.5rem',
+                  boxShadow: isOvertime
+                    ? '0 0 25px rgba(239, 68, 68, 0.95)'
+                    : isCritical
+                      ? '0 0 22px rgba(249, 115, 22, 0.85)'
+                      : isWarning
+                        ? '0 0 22px rgba(245, 158, 11, 0.8)'
+                        : '0 0 25px rgba(96, 165, 250, 0.85)',
+                  transition: 'background 0.3s ease, box-shadow 0.3s ease',
+                }}
+              />
+
+              {/* Speaker / Subtitle if configured */}
+              {timerState.slots && timerState.slots[timerState.activeSlotIndex]?.speaker && (
+                <div
+                  style={{
+                    marginTop: '1.5rem',
+                    fontSize: 'clamp(14px, 1.5vw, 22px)',
+                    fontWeight: 600,
+                    color: '#94a3b8',
+                    letterSpacing: '0.04em',
+                    fontFamily: 'Inter, sans-serif',
+                  }}
+                >
+                  {timerState.slots[timerState.activeSlotIndex]?.speaker}
                 </div>
               )}
             </div>
-          ) : (
-            /* General Song / Hymn Slide Text */
-            <div
-              style={{
-                fontFamily: theme.fontFamily,
-                fontSize: `${theme.fontSize}px`,
-                fontWeight: theme.fontWeight,
-                fontStyle: theme.fontStyle,
-                textTransform: theme.textTransform,
-                color: theme.textColor,
-                lineHeight: theme.lineHeight,
-                letterSpacing: `${theme.letterSpacing}px`,
-                textShadow: combinedTextShadow,
-                whiteSpace: 'pre-line',
-                wordBreak: 'break-word',
-              }}
-            >
-              {displayedLine}
-            </div>
-          )}
-        </div>
+          ) : null
+        ) : (
+          /* Normal Live Scripture / Worship Slide Text */
+          <div
+            style={{
+              maxWidth: '1360px',
+              width: '100%',
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: isScriptureCategory ? 'center' : (theme.textAlign === 'left' ? 'flex-start' : theme.textAlign === 'right' ? 'flex-end' : 'center'),
+              textAlign: isScriptureCategory ? 'center' : theme.textAlign,
+              opacity: fading ? 0 : 1,
+              transform: fading ? 'translateY(10px) scale(0.98)' : 'translateY(0) scale(1)',
+              transition: 'opacity 0.2s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+              padding: '2rem 1.5rem',
+              marginTop: (!liveState.isBlackout && (showTimerWidget || showClockWidget)) ? '5.5rem' : '0',
+              ...(effectiveOverlay && {
+                background: 'rgba(0, 0, 0, 0.65)',
+                padding: '2rem 3rem',
+                borderRadius: '20px',
+                backdropFilter: 'blur(14px)',
+                border: '1px solid rgba(255, 255, 255, 0.18)',
+                boxShadow: '0 12px 40px rgba(0, 0, 0, 0.8)',
+              }),
+            }}
+          >
+            {/* Scripture Specific Layout (Quotation Mark + Adaptive Italic Serif + Flanked Reference) */}
+            {isScriptureCategory ? (
+              <div
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  width: '100%',
+                  position: 'relative',
+                }}
+              >
+                {/* Stylized Double Quotation Mark (Top Left) */}
+                <div
+                  style={{
+                    alignSelf: 'flex-start',
+                    marginBottom: '1rem',
+                    opacity: 0.9,
+                    marginLeft: '0.5rem',
+                  }}
+                >
+                  <svg width="56" height="46" viewBox="0 0 32 28" fill="#2d3139">
+                    <path d="M0 16.5C0 9.8 4.2 3.5 11.8 0L14 4.1C9.6 6.3 7.8 9.3 7.3 12.3H14V28H0V16.5ZM18 16.5C18 9.8 22.2 3.5 29.8 0L32 4.1C27.6 6.3 25.8 9.3 25.3 12.3H32V28H18V16.5Z" />
+                  </svg>
+                </div>
+
+                {/* Dynamic Auto-Adjusted Italic Serif Scripture Verse Text */}
+                <div
+                  style={{
+                    fontFamily: '"Playfair Display", "Merriweather", "Georgia", serif',
+                    fontSize: dynamicScriptureFontSize,
+                    fontWeight: 600,
+                    fontStyle: 'italic',
+                    color: '#ffffff',
+                    lineHeight: dynamicLineHeight,
+                    letterSpacing: '-0.015em',
+                    textShadow: combinedTextShadow !== 'none' ? combinedTextShadow : '0 2px 20px rgba(0, 0, 0, 0.9)',
+                    whiteSpace: 'pre-line',
+                    wordBreak: 'break-word',
+                    maxWidth: '1440px',
+                  }}
+                >
+                  {cleanVerseText}
+                </div>
+
+                {/* Flanked Scripture Citation Reference at Bottom */}
+                {citationRef && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '20px',
+                      marginTop: '2.5rem',
+                      width: '100%',
+                    }}
+                  >
+                    <div style={{ width: '70px', height: '1.5px', background: 'rgba(255, 255, 255, 0.25)' }} />
+                    <span
+                      style={{
+                        fontFamily: 'Inter, Montserrat, sans-serif',
+                        fontSize: 'clamp(20px, 2.2vw, 28px)',
+                        fontWeight: 800,
+                        color: '#e2e8f0',
+                        letterSpacing: '0.04em',
+                      }}
+                    >
+                      {citationRef}
+                    </span>
+                    <div style={{ width: '70px', height: '1.5px', background: 'rgba(255, 255, 255, 0.25)' }} />
+                  </div>
+                )}
+              </div>
+            ) : (
+              /* General Song / Hymn Slide Text */
+              <div
+                style={{
+                  fontFamily: theme.fontFamily,
+                  fontSize: `${theme.fontSize}px`,
+                  fontWeight: theme.fontWeight,
+                  fontStyle: theme.fontStyle,
+                  textTransform: theme.textTransform,
+                  color: theme.textColor,
+                  lineHeight: theme.lineHeight,
+                  letterSpacing: `${theme.letterSpacing}px`,
+                  textShadow: combinedTextShadow,
+                  whiteSpace: 'pre-line',
+                  wordBreak: 'break-word',
+                }}
+              >
+                {displayedLine}
+              </div>
+            )}
+          </div>
+        )
       )}
 
       {/* ------------------------------------------------------------- */}
       {/* 3. BOTTOM DISPLAY BAR: NEXT VERSE / SLIDE PREVIEW             */}
       {/* ------------------------------------------------------------- */}
-      {!liveState.isBlackout && !liveState.isLogo && !liveState.isClearText && (
+      {!liveState.isBlackout && !liveState.isLogo && !isTextCleared && (
         isScriptureCategory ? (
           nextScripturePreview ? (
             <div
