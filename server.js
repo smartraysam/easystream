@@ -421,6 +421,9 @@ function setLines(sessionId, title, subtitle, lines, category = "custom") {
   state.playing = false;
   state.lineStartedAt = null;
   state.lineDurationMs = null;
+  if (state.liveState) {
+    state.liveState.isClearText = false;
+  }
   saveStoreToDisk();
 }
 

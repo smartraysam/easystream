@@ -83,6 +83,9 @@ export const App: React.FC = () => {
     if (item.themeOverride) {
       updateTheme(item.themeOverride);
     }
+    if (state.liveState.isClearText) {
+      updateLiveState({ isClearText: false });
+    }
   };
 
   // Simple client-side route checking
@@ -125,6 +128,7 @@ export const App: React.FC = () => {
         adjustTimer={adjustTimer}
         setTimerConfig={setTimerConfig}
         setTimerPrompt={setTimerPrompt}
+        onUpdateTheme={updateTheme}
         onSaveLibraryItem={saveLibraryItem}
         onAddToSchedule={handleAddToSchedule}
       />

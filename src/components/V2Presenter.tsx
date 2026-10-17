@@ -14,11 +14,14 @@ import {
   AlertTriangle,
   Layout,
   RefreshCw,
-  Loader2,
-  Zap,
-  Globe,
+  Type,
+  Minus,
+  Plus,
+  Sliders,
+  X,
+  Check,
 } from 'lucide-react';
-import { AppState, LiveState, TimerState, LibraryItem } from '../types';
+import { AppState, LiveState, TimerState, LibraryItem, PresentationTheme } from '../types';
 import {
   BIBLE_BOOKS,
   BibleBook,
@@ -68,6 +71,17 @@ const TIMER_PRESETS = [
   { label: '60m', sec: 3600 },
 ];
 
+export const FONT_FAMILIES = [
+  { label: 'Montserrat', sublabel: 'Modern Bold Sans', value: 'Montserrat, sans-serif' },
+  { label: 'Outfit', sublabel: 'Clean Geometric Sans', value: 'Outfit, sans-serif' },
+  { label: 'Inter', sublabel: 'Crisp Display Sans', value: 'Inter, sans-serif' },
+  { label: 'Playfair Display', sublabel: 'Classic Editorial Serif', value: 'Playfair Display, serif' },
+  { label: 'Cinzel', sublabel: 'Majestic Traditional Serif', value: 'Cinzel, serif' },
+  { label: 'Oswald', sublabel: 'Tall Condensed Impact', value: 'Oswald, sans-serif' },
+  { label: 'Georgia', sublabel: 'Warm Reading Serif', value: 'Georgia, serif' },
+  { label: 'JetBrains Mono', sublabel: 'Clean Modern Monospace', value: 'JetBrains Mono, monospace' },
+];
+
 interface V2PresenterProps {
   state: AppState;
   sessionId: string;
@@ -81,6 +95,7 @@ interface V2PresenterProps {
   adjustTimer: (deltaSec: number) => void;
   setTimerConfig: (config: Partial<TimerState>) => void;
   setTimerPrompt: (message: string | null, visible: boolean) => void;
+  onUpdateTheme?: (theme: Partial<PresentationTheme>) => void;
   onSaveLibraryItem?: (item: LibraryItem) => void;
   onAddToSchedule?: (item: LibraryItem) => void;
 }
@@ -98,7 +113,12 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
   adjustTimer,
   setTimerConfig,
   setTimerPrompt,
+  onUpdateTheme,
 }) => {
+  // -------------------------------------------------------------
+  // Typography & Styling Modal State
+  // -------------------------------------------------------------
+  const [showTypographyModal, setShowTypographyModal] = useState(false);
   // -------------------------------------------------------------
   // Top Scripture Search State
   // -------------------------------------------------------------
@@ -156,6 +176,18 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     document.addEventListener('mousedown', handleOutsideClick);
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
+
+  // Close Typography modal on Escape key
+  useEffect(() => {
+    if (!showTypographyModal) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setShowTypographyModal(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showTypographyModal]);
 
   // Compute suggestions as user types
   const suggestions: BibleSuggestion[] = useMemo(() => {
@@ -341,6 +373,9 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
           if (slides.length > 0) {
             onSetLines(data.reference, data.versionName || data.version, slides, 'scripture');
             onJumpTo(targetSlideIdx);
+            if (state.liveState.isClearText) {
+              onUpdateLiveState({ isClearText: false });
+            }
             setLiveFeedback(true);
             setTimeout(() => setLiveFeedback(false), 2000);
           }
@@ -423,6 +458,9 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
             'scripture'
           );
           onJumpTo(sIdx);
+          if (state.liveState.isClearText) {
+            onUpdateLiveState({ isClearText: false });
+          }
           setLiveFeedback(true);
           setTimeout(() => setLiveFeedback(false), 2000);
           return;
@@ -442,6 +480,9 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
       'scripture'
     );
     onJumpTo(slideIdx);
+    if (state.liveState.isClearText) {
+      onUpdateLiveState({ isClearText: false });
+    }
     setLiveFeedback(true);
     setTimeout(() => setLiveFeedback(false), 2000);
   };
@@ -744,7 +785,7 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
             </span>
           )}
 
-          {/* Clear Text & Blackout Toggles */}
+          {/* Clear Text & Blackout Toggles & Typography Settings */}
           <div style={{ display: 'flex', gap: '4px' }}>
             <button
               onClick={() => onUpdateLiveState({ isClearText: !state.liveState.isClearText })}
@@ -777,6 +818,27 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
               title="Blackout entire display screen"
             >
               Blackout
+            </button>
+            <button
+              onClick={() => setShowTypographyModal(true)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+                padding: '6px 10px',
+                borderRadius: '6px',
+                background: showTypographyModal ? 'rgba(56, 189, 248, 0.25)' : 'rgba(255, 255, 255, 0.06)',
+                color: showTypographyModal ? '#38bdf8' : '#cbd5e1',
+                border: showTypographyModal ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.1)',
+                fontSize: '11px',
+                fontWeight: 700,
+                cursor: 'pointer',
+                transition: 'all 0.15s ease',
+              }}
+              title="Edit typography, scripture font family, text size, and timer font size"
+            >
+              <Type size={13} color="#38bdf8" />
+              <span>Typography</span>
             </button>
           </div>
 
@@ -1112,8 +1174,82 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
           </div>
         </div>
 
-        {/* Right: Display Sync Toggle & Prompt Message */}
+        {/* Right: Display Sync Toggle, Timer Scale & Prompt Message */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          {/* Inline Timer Font Size Control */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px',
+              background: 'rgba(0, 0, 0, 0.35)',
+              padding: '3px 8px',
+              borderRadius: '6px',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+            }}
+            title="Scale the countdown timer font size on the live display screen"
+          >
+            <span style={{ fontSize: '10px', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase' }}>
+              Size:
+            </span>
+            <button
+              onClick={() => {
+                const cur = state.timerState.fontSizeScale || 100;
+                const next = Math.max(50, cur - 10);
+                setTimerConfig({ fontSizeScale: next });
+              }}
+              style={{
+                width: '20px',
+                height: '20px',
+                borderRadius: '4px',
+                background: 'rgba(255, 255, 255, 0.08)',
+                border: 'none',
+                color: '#ffffff',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              title="Decrease timer font size (-10%)"
+            >
+              <Minus size={11} />
+            </button>
+            <span
+              style={{
+                fontSize: '11px',
+                fontWeight: 800,
+                color: '#38bdf8',
+                minWidth: '38px',
+                textAlign: 'center',
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              {state.timerState.fontSizeScale || 100}%
+            </span>
+            <button
+              onClick={() => {
+                const cur = state.timerState.fontSizeScale || 100;
+                const next = Math.min(250, cur + 10);
+                setTimerConfig({ fontSizeScale: next });
+              }}
+              style={{
+                width: '20px',
+                height: '20px',
+                borderRadius: '4px',
+                background: 'rgba(255, 255, 255, 0.08)',
+                border: 'none',
+                color: '#ffffff',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+              }}
+              title="Increase timer font size (+10%)"
+            >
+              <Plus size={11} />
+            </button>
+          </div>
+
           <label
             style={{
               display: 'flex',
@@ -1966,57 +2102,159 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
               </div>
             </div>
 
-            {/* Slide Navigation */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
-              <button
-                onClick={handlePrevSlide}
-                disabled={selectedSlideIndex <= 0}
-                style={{
-                  padding: '6px 10px',
-                  borderRadius: '6px 0 0 6px',
-                  background: 'rgba(255, 255, 255, 0.06)',
-                  border: '1px solid rgba(255, 255, 255, 0.12)',
-                  color: selectedSlideIndex <= 0 ? '#475569' : '#ffffff',
-                  cursor: selectedSlideIndex <= 0 ? 'not-allowed' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                }}
-                title="Previous slide (Left Arrow)"
-              >
-                <ChevronLeft size={15} />
-              </button>
+            {/* Slide Sub-Header Controls: Font Family, Text Size & Slide Navigation */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+              {/* Quick Font Family Selector */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <Type size={13} color="#38bdf8" />
+                <select
+                  value={state.theme.fontFamily || 'Montserrat, sans-serif'}
+                  onChange={(e) => onUpdateTheme?.({ fontFamily: e.target.value })}
+                  style={{
+                    background: 'rgba(0, 0, 0, 0.45)',
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    borderRadius: '6px',
+                    color: '#ffffff',
+                    fontSize: '11px',
+                    fontWeight: 700,
+                    padding: '5px 8px',
+                    outline: 'none',
+                    cursor: 'pointer',
+                  }}
+                  title="Select scripture font family for live screen"
+                >
+                  {FONT_FAMILIES.map((f) => (
+                    <option key={f.value} value={f.value} style={{ background: '#0f172a', color: '#ffffff' }}>
+                      {f.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Quick Text Font Size Controls */}
               <div
                 style={{
-                  padding: '6px 10px',
-                  background: 'rgba(0, 0, 0, 0.3)',
-                  borderTop: '1px solid rgba(255, 255, 255, 0.12)',
-                  borderBottom: '1px solid rgba(255, 255, 255, 0.12)',
-                  fontSize: '11px',
-                  fontWeight: 800,
-                  color: '#38bdf8',
-                  minWidth: '55px',
-                  textAlign: 'center',
-                }}
-              >
-                {selectedSlideIndex + 1} / {generatedSlides.length || 1}
-              </div>
-              <button
-                onClick={handleNextSlide}
-                disabled={selectedSlideIndex >= generatedSlides.length - 1}
-                style={{
-                  padding: '6px 10px',
-                  borderRadius: '0 6px 6px 0',
-                  background: 'rgba(255, 255, 255, 0.06)',
-                  border: '1px solid rgba(255, 255, 255, 0.12)',
-                  color: selectedSlideIndex >= generatedSlides.length - 1 ? '#475569' : '#ffffff',
-                  cursor: selectedSlideIndex >= generatedSlides.length - 1 ? 'not-allowed' : 'pointer',
                   display: 'flex',
                   alignItems: 'center',
+                  gap: '4px',
+                  background: 'rgba(0, 0, 0, 0.45)',
+                  padding: '3px 8px',
+                  borderRadius: '6px',
+                  border: '1px solid rgba(255, 255, 255, 0.12)',
                 }}
-                title="Next slide (Right Arrow / Space)"
+                title="Adjust live scripture font size"
               >
-                <ChevronRight size={15} />
-              </button>
+                <span style={{ fontSize: '10px', fontWeight: 800, color: '#94a3b8' }}>Text:</span>
+                <button
+                  onClick={() => {
+                    const cur = state.theme.fontSize || 44;
+                    const next = Math.max(24, cur - 4);
+                    onUpdateTheme?.({ fontSize: next });
+                  }}
+                  style={{
+                    width: '18px',
+                    height: '18px',
+                    borderRadius: '3px',
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    border: 'none',
+                    color: '#ffffff',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  title="Decrease text font size (-4px)"
+                >
+                  <Minus size={10} />
+                </button>
+                <span
+                  style={{
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    color: '#f59e0b',
+                    minWidth: '34px',
+                    textAlign: 'center',
+                    fontVariantNumeric: 'tabular-nums',
+                  }}
+                >
+                  {state.theme.fontSize || 44}px
+                </span>
+                <button
+                  onClick={() => {
+                    const cur = state.theme.fontSize || 44;
+                    const next = Math.min(96, cur + 4);
+                    onUpdateTheme?.({ fontSize: next });
+                  }}
+                  style={{
+                    width: '18px',
+                    height: '18px',
+                    borderRadius: '3px',
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    border: 'none',
+                    color: '#ffffff',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                  title="Increase text font size (+4px)"
+                >
+                  <Plus size={10} />
+                </button>
+              </div>
+
+              {/* Slide Navigation */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '2px' }}>
+                <button
+                  onClick={handlePrevSlide}
+                  disabled={selectedSlideIndex <= 0}
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: '6px 0 0 6px',
+                    background: 'rgba(255, 255, 255, 0.06)',
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    color: selectedSlideIndex <= 0 ? '#475569' : '#ffffff',
+                    cursor: selectedSlideIndex <= 0 ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                  title="Previous slide (Left Arrow)"
+                >
+                  <ChevronLeft size={15} />
+                </button>
+                <div
+                  style={{
+                    padding: '6px 10px',
+                    background: 'rgba(0, 0, 0, 0.3)',
+                    borderTop: '1px solid rgba(255, 255, 255, 0.12)',
+                    borderBottom: '1px solid rgba(255, 255, 255, 0.12)',
+                    fontSize: '11px',
+                    fontWeight: 800,
+                    color: '#38bdf8',
+                    minWidth: '55px',
+                    textAlign: 'center',
+                  }}
+                >
+                  {selectedSlideIndex + 1} / {generatedSlides.length || 1}
+                </div>
+                <button
+                  onClick={handleNextSlide}
+                  disabled={selectedSlideIndex >= generatedSlides.length - 1}
+                  style={{
+                    padding: '6px 10px',
+                    borderRadius: '0 6px 6px 0',
+                    background: 'rgba(255, 255, 255, 0.06)',
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    color: selectedSlideIndex >= generatedSlides.length - 1 ? '#475569' : '#ffffff',
+                    cursor: selectedSlideIndex >= generatedSlides.length - 1 ? 'not-allowed' : 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                  }}
+                  title="Next slide (Right Arrow / Space)"
+                >
+                  <ChevronRight size={15} />
+                </button>
+              </div>
             </div>
           </div>
 
@@ -2043,6 +2281,9 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                   onClick={() => {
                     setSelectedSlideIndex(idx);
                     onJumpTo(idx);
+                    if (state.category === 'scripture' && state.liveState.isClearText) {
+                      onUpdateLiveState({ isClearText: false });
+                    }
                   }}
                   onDoubleClick={() => handleGoLive(idx)}
                   style={{
@@ -2127,6 +2368,7 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                       fontSize: '13px',
                       lineHeight: 1.5,
                       fontWeight: 500,
+                      fontFamily: state.theme.fontFamily || 'Montserrat, sans-serif',
                       whiteSpace: 'pre-line',
                       overflow: 'hidden',
                       display: '-webkit-box',
@@ -2222,17 +2464,20 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                   display: 'flex',
                   justifyContent: 'space-between',
                   alignItems: 'flex-start',
-                  borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+                  borderBottom: state.liveState.isClearText || !state.lines[state.cur] ? 'none' : '1px solid rgba(255, 255, 255, 0.08)',
                   paddingBottom: '4px',
                 }}
               >
-                {/* Top Left Countdown Timer */}
-                {state.timerState.showOnDisplay && (state.timerState.status !== 'idle' || currentTimerSec > 0) ? (
+                {/* Top Left Countdown Timer - only shown when text is active */}
+                {state.timerState.showOnDisplay &&
+                (state.timerState.status !== 'idle' || currentTimerSec > 0 || state.timerState.durationSec > 0) &&
+                !state.liveState.isClearText &&
+                Boolean(state.lines[state.cur]) ? (
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
                     <span
                       style={{
                         fontFamily: 'Montserrat, sans-serif',
-                        fontSize: '18px',
+                        fontSize: `${Math.round(18 * Math.max(0.6, Math.min(2.0, (state.timerState.fontSizeScale || 100) / 100)))}px`,
                         fontWeight: 900,
                         color: isOvertime ? '#ef4444' : isCritical ? '#f97316' : isWarning ? '#f59e0b' : '#60a5fa',
                         lineHeight: 1,
@@ -2269,27 +2514,69 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
               </div>
             )}
 
-            {/* Center: Live Scripture Text */}
-            {!state.liveState.isBlackout && !state.liveState.isClearText && (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  textAlign: 'center',
-                  color: '#ffffff',
-                  fontSize: '13px',
-                  fontWeight: 600,
-                  lineHeight: 1.4,
-                  fontFamily: 'Montserrat, sans-serif',
-                  textShadow: '0 2px 8px rgba(0, 0, 0, 0.9)',
-                  padding: '4px',
-                  whiteSpace: 'pre-line',
-                  overflow: 'hidden',
-                }}
-              >
-                {state.lines[state.cur] || generatedSlides[selectedSlideIndex] || 'No scripture active'}
-              </div>
+            {/* Center: Live Scripture Text OR Centered Hero Timer when text cleared */}
+            {!state.liveState.isBlackout && (
+              (state.liveState.isClearText || !state.lines[state.cur]) ? (
+                /* Hero Centered Timer in Middle Space of Mini Monitor */
+                state.timerState.showOnDisplay && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      textAlign: 'center',
+                      padding: '8px 4px',
+                      margin: 'auto 0',
+                    }}
+                  >
+                    <span
+                      style={{
+                        fontFamily: 'Montserrat, sans-serif',
+                        fontSize: `${Math.round(32 * Math.max(0.6, Math.min(2.0, (state.timerState.fontSizeScale || 100) / 100)))}px`,
+                        fontWeight: 900,
+                        color: isOvertime ? '#ef4444' : isCritical ? '#f97316' : isWarning ? '#f59e0b' : '#60a5fa',
+                        lineHeight: 1,
+                        letterSpacing: '-0.02em',
+                        textShadow: isOvertime ? '0 0 15px rgba(239, 68, 68, 0.8)' : '0 0 15px rgba(96, 165, 250, 0.5)',
+                      }}
+                    >
+                      {formattedCountdown}
+                    </span>
+                    <div
+                      style={{
+                        height: '2.5px',
+                        width: `${Math.round(45 * Math.max(0.6, Math.min(2.0, (state.timerState.fontSizeScale || 100) / 100)))}px`,
+                        background: isOvertime ? '#ef4444' : '#60a5fa',
+                        marginTop: '4px',
+                        borderRadius: '2px',
+                        boxShadow: isOvertime ? '0 0 8px rgba(239, 68, 68, 0.8)' : '0 0 8px rgba(96, 165, 250, 0.6)',
+                      }}
+                    />
+                  </div>
+                )
+              ) : (
+                /* Live Scripture Text */
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    textAlign: 'center',
+                    color: '#ffffff',
+                    fontSize: `${Math.round(13 * Math.max(0.7, Math.min(1.8, (state.theme.fontSize || 44) / 44)))}px`,
+                    fontWeight: 600,
+                    lineHeight: 1.4,
+                    fontFamily: state.theme.fontFamily || 'Montserrat, sans-serif',
+                    textShadow: '0 2px 8px rgba(0, 0, 0, 0.9)',
+                    padding: '4px',
+                    whiteSpace: 'pre-line',
+                    overflow: 'hidden',
+                  }}
+                >
+                  {state.lines[state.cur] || generatedSlides[selectedSlideIndex] || 'No scripture active'}
+                </div>
+              )
             )}
 
             {/* Bottom Citation & Status */}
@@ -2336,6 +2623,536 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
           </div>
         </div>
       </main>
+
+      {/* ============================================================= */}
+      {/* TYPOGRAPHY & DISPLAY STYLING MODAL                            */}
+      {/* ============================================================= */}
+      {showTypographyModal && (
+        <div
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowTypographyModal(false);
+          }}
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.75)',
+            backdropFilter: 'blur(8px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 9999,
+            padding: '20px',
+          }}
+        >
+          <div
+            style={{
+              width: '100%',
+              maxWidth: '720px',
+              maxHeight: '90vh',
+              background: 'linear-gradient(145deg, #0f172a 0%, #090d16 100%)',
+              border: '1.5px solid rgba(56, 189, 248, 0.3)',
+              borderRadius: '16px',
+              boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.9), 0 0 35px rgba(56, 189, 248, 0.15)',
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+            }}
+          >
+            {/* Modal Header */}
+            <div
+              style={{
+                padding: '16px 22px',
+                borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: 'rgba(255, 255, 255, 0.02)',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <div
+                  style={{
+                    width: '34px',
+                    height: '34px',
+                    borderRadius: '8px',
+                    background: 'rgba(56, 189, 248, 0.15)',
+                    border: '1px solid rgba(56, 189, 248, 0.3)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Type size={18} color="#38bdf8" />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 800, color: '#ffffff' }}>
+                    Typography & Display Styling
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '11px', color: '#94a3b8' }}>
+                    Adjust font family, scripture text size, and countdown timer scale across V2 and Live Display
+                  </p>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowTypographyModal(false)}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.06)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  borderRadius: '8px',
+                  width: '32px',
+                  height: '32px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  color: '#94a3b8',
+                  cursor: 'pointer',
+                  transition: 'all 0.15s ease',
+                }}
+                title="Close (Esc)"
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal Scrollable Body */}
+            <div
+              style={{
+                padding: '22px',
+                overflowY: 'auto',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: '20px',
+              }}
+            >
+              {/* 1. FONT FAMILY PICKER */}
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 800, color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    1. Scripture Font Family
+                  </label>
+                  <span style={{ fontSize: '11px', fontWeight: 700, color: '#38bdf8' }}>
+                    {FONT_FAMILIES.find((f) => f.value === (state.theme.fontFamily || 'Montserrat, sans-serif'))?.label || 'Montserrat'}
+                  </span>
+                </div>
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))',
+                    gap: '8px',
+                  }}
+                >
+                  {FONT_FAMILIES.map((font) => {
+                    const isSelected = (state.theme.fontFamily || 'Montserrat, sans-serif') === font.value;
+                    return (
+                      <button
+                        key={font.value}
+                        onClick={() => onUpdateTheme?.({ fontFamily: font.value })}
+                        style={{
+                          textAlign: 'left',
+                          padding: '10px 12px',
+                          borderRadius: '8px',
+                          background: isSelected ? 'rgba(56, 189, 248, 0.15)' : 'rgba(255, 255, 255, 0.04)',
+                          border: isSelected ? '1.5px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.08)',
+                          boxShadow: isSelected ? '0 0 12px rgba(56, 189, 248, 0.25)' : 'none',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '2px',
+                          transition: 'all 0.15s ease',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span
+                            style={{
+                              fontFamily: font.value,
+                              fontSize: '13px',
+                              fontWeight: 700,
+                              color: isSelected ? '#38bdf8' : '#ffffff',
+                            }}
+                          >
+                            {font.label}
+                          </span>
+                          {isSelected && <Check size={12} color="#38bdf8" />}
+                        </div>
+                        <span style={{ fontSize: '9px', color: '#64748b' }}>
+                          {font.sublabel}
+                        </span>
+                        <div
+                          style={{
+                            fontFamily: font.value,
+                            fontSize: '11px',
+                            color: '#cbd5e1',
+                            marginTop: '4px',
+                            opacity: 0.85,
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                          }}
+                        >
+                          In the beginning
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 2. SCRIPTURE TEXT FONT SIZE */}
+              <div
+                style={{
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  padding: '14px',
+                  borderRadius: '10px',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 800, color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    2. Scripture Text Font Size
+                  </label>
+                  <span
+                    style={{
+                      fontSize: '13px',
+                      fontWeight: 800,
+                      color: '#f59e0b',
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      background: 'rgba(245, 158, 11, 0.15)',
+                      border: '1px solid rgba(245, 158, 11, 0.3)',
+                    }}
+                  >
+                    {state.theme.fontSize || 44} px
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
+                  <button
+                    onClick={() => {
+                      const cur = state.theme.fontSize || 44;
+                      onUpdateTheme?.({ fontSize: Math.max(24, cur - 4) });
+                    }}
+                    style={{
+                      width: '28px',
+                      height: '28px',
+                      borderRadius: '6px',
+                      background: 'rgba(255, 255, 255, 0.08)',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      color: '#ffffff',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                    title="Decrease font size (-4px)"
+                  >
+                    <Minus size={13} />
+                  </button>
+
+                  <input
+                    type="range"
+                    min="24"
+                    max="96"
+                    step="2"
+                    value={state.theme.fontSize || 44}
+                    onChange={(e) => onUpdateTheme?.({ fontSize: Number(e.target.value) })}
+                    style={{ flex: 1, accentColor: '#f59e0b', cursor: 'pointer' }}
+                  />
+
+                  <button
+                    onClick={() => {
+                      const cur = state.theme.fontSize || 44;
+                      onUpdateTheme?.({ fontSize: Math.min(96, cur + 4) });
+                    }}
+                    style={{
+                      width: '28px',
+                      height: '28px',
+                      borderRadius: '6px',
+                      background: 'rgba(255, 255, 255, 0.08)',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      color: '#ffffff',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                    title="Increase font size (+4px)"
+                  >
+                    <Plus size={13} />
+                  </button>
+                </div>
+
+                {/* Quick Presets */}
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  {[
+                    { label: '32px (Compact)', size: 32 },
+                    { label: '44px (Default)', size: 44 },
+                    { label: '56px (Large)', size: 56 },
+                    { label: '72px (Huge)', size: 72 },
+                    { label: '88px (Extra Large)', size: 88 },
+                  ].map((preset) => {
+                    const isSelected = (state.theme.fontSize || 44) === preset.size;
+                    return (
+                      <button
+                        key={preset.size}
+                        onClick={() => onUpdateTheme?.({ fontSize: preset.size })}
+                        style={{
+                          padding: '4px 10px',
+                          borderRadius: '6px',
+                          background: isSelected ? 'rgba(245, 158, 11, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                          border: isSelected ? '1px solid #f59e0b' : '1px solid rgba(255, 255, 255, 0.08)',
+                          color: isSelected ? '#f59e0b' : '#cbd5e1',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 3. COUNTDOWN TIMER FONT SIZE SCALE */}
+              <div
+                style={{
+                  background: 'rgba(255, 255, 255, 0.02)',
+                  padding: '14px',
+                  borderRadius: '10px',
+                  border: '1px solid rgba(255, 255, 255, 0.06)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                  <label style={{ fontSize: '12px', fontWeight: 800, color: '#e2e8f0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                    3. Countdown Timer Font Size Scale
+                  </label>
+                  <span
+                    style={{
+                      fontSize: '13px',
+                      fontWeight: 800,
+                      color: '#38bdf8',
+                      padding: '2px 8px',
+                      borderRadius: '4px',
+                      background: 'rgba(56, 189, 248, 0.15)',
+                      border: '1px solid rgba(56, 189, 248, 0.3)',
+                    }}
+                  >
+                    {state.timerState.fontSizeScale || 100}%
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '10px' }}>
+                  <button
+                    onClick={() => {
+                      const cur = state.timerState.fontSizeScale || 100;
+                      setTimerConfig({ fontSizeScale: Math.max(50, cur - 10) });
+                    }}
+                    style={{
+                      width: '28px',
+                      height: '28px',
+                      borderRadius: '6px',
+                      background: 'rgba(255, 255, 255, 0.08)',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      color: '#ffffff',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                    title="Decrease timer size (-10%)"
+                  >
+                    <Minus size={13} />
+                  </button>
+
+                  <input
+                    type="range"
+                    min="50"
+                    max="250"
+                    step="5"
+                    value={state.timerState.fontSizeScale || 100}
+                    onChange={(e) => setTimerConfig({ fontSizeScale: Number(e.target.value) })}
+                    style={{ flex: 1, accentColor: '#38bdf8', cursor: 'pointer' }}
+                  />
+
+                  <button
+                    onClick={() => {
+                      const cur = state.timerState.fontSizeScale || 100;
+                      setTimerConfig({ fontSizeScale: Math.min(250, cur + 10) });
+                    }}
+                    style={{
+                      width: '28px',
+                      height: '28px',
+                      borderRadius: '6px',
+                      background: 'rgba(255, 255, 255, 0.08)',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      color: '#ffffff',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                    title="Increase timer size (+10%)"
+                  >
+                    <Plus size={13} />
+                  </button>
+                </div>
+
+                {/* Quick Presets */}
+                <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                  {[
+                    { label: '75% (Subtle)', scale: 75 },
+                    { label: '100% (Standard)', scale: 100 },
+                    { label: '125% (Prominent)', scale: 125 },
+                    { label: '150% (Hero)', scale: 150 },
+                    { label: '200% (Maximum)', scale: 200 },
+                  ].map((preset) => {
+                    const isSelected = (state.timerState.fontSizeScale || 100) === preset.scale;
+                    return (
+                      <button
+                        key={preset.scale}
+                        onClick={() => setTimerConfig({ fontSizeScale: preset.scale })}
+                        style={{
+                          padding: '4px 10px',
+                          borderRadius: '6px',
+                          background: isSelected ? 'rgba(56, 189, 248, 0.2)' : 'rgba(255, 255, 255, 0.05)',
+                          border: isSelected ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.08)',
+                          color: isSelected ? '#38bdf8' : '#cbd5e1',
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {preset.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 4. LIVE SCREEN PREVIEW CARD */}
+              <div>
+                <label style={{ fontSize: '11px', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: '6px' }}>
+                  Live Broadcast Preview
+                </label>
+                <div
+                  style={{
+                    background: 'radial-gradient(ellipse at center, #1e293b 0%, #0f172a 70%, #020617 100%)',
+                    borderRadius: '10px',
+                    border: '1px solid rgba(56, 189, 248, 0.3)',
+                    padding: '14px 18px',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    minHeight: '130px',
+                  }}
+                >
+                  {/* Top Bar Preview */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '1px solid rgba(255, 255, 255, 0.08)', paddingBottom: '4px' }}>
+                    <div style={{ display: 'flex', flexDirection: 'column' }}>
+                      <span
+                        style={{
+                          fontFamily: 'Montserrat, sans-serif',
+                          fontSize: `${Math.round(18 * Math.max(0.6, Math.min(2.0, (state.timerState.fontSizeScale || 100) / 100)))}px`,
+                          fontWeight: 900,
+                          color: '#60a5fa',
+                          lineHeight: 1,
+                        }}
+                      >
+                        {formattedCountdown}
+                      </span>
+                      <div
+                        style={{
+                          height: '2px',
+                          width: `${Math.round(40 * Math.max(0.6, Math.min(2.0, (state.timerState.fontSizeScale || 100) / 100)))}px`,
+                          background: '#60a5fa',
+                          marginTop: '2px',
+                        }}
+                      />
+                    </div>
+                    <span style={{ fontSize: '10px', fontWeight: 700, color: '#f59e0b' }}>
+                      {new Date(now).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                    </span>
+                  </div>
+
+                  {/* Text Preview */}
+                  <div
+                    style={{
+                      fontFamily: state.theme.fontFamily || 'Montserrat, sans-serif',
+                      fontSize: `${Math.round(14 * Math.max(0.7, Math.min(1.8, (state.theme.fontSize || 44) / 44)))}px`,
+                      fontWeight: 600,
+                      color: '#ffffff',
+                      textAlign: 'center',
+                      padding: '10px 4px',
+                      lineHeight: 1.4,
+                      textShadow: '0 2px 10px rgba(0, 0, 0, 0.9)',
+                    }}
+                  >
+                    "{state.lines[state.cur] || 'For God so loved the world that he gave his one and only Son, that whoever believes in him shall not perish but have eternal life.'}"
+                  </div>
+
+                  {/* Reference */}
+                  <div style={{ textAlign: 'center', fontSize: '10px', fontWeight: 800, color: '#38bdf8' }}>
+                    {state.title || scriptureResult?.reference || 'John 3:16'} ({state.subtitle || scriptureResult?.version || 'NIV'})
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div
+              style={{
+                padding: '14px 22px',
+                borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: 'rgba(255, 255, 255, 0.02)',
+              }}
+            >
+              <button
+                onClick={() => {
+                  onUpdateTheme?.({ fontFamily: 'Montserrat, sans-serif', fontSize: 44 });
+                  setTimerConfig({ fontSizeScale: 100 });
+                }}
+                style={{
+                  padding: '7px 14px',
+                  borderRadius: '6px',
+                  background: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)',
+                  color: '#94a3b8',
+                  fontSize: '12px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                }}
+              >
+                <RotateCcw size={12} />
+                <span>Reset to Defaults</span>
+              </button>
+
+              <button
+                onClick={() => setShowTypographyModal(false)}
+                style={{
+                  padding: '8px 20px',
+                  borderRadius: '8px',
+                  background: 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)',
+                  border: 'none',
+                  color: '#ffffff',
+                  fontSize: '12px',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  boxShadow: '0 0 15px rgba(14, 165, 233, 0.4)',
+                }}
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

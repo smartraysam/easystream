@@ -306,30 +306,33 @@ export const DisplayView: React.FC<DisplayViewProps> = ({
     }
   }
 
-  // Dynamic adaptive font scaling & line height based on scripture verse length
+  // Dynamic adaptive font scaling & line height based on scripture verse length & user theme.fontSize
+  const textScale = Math.max(0.4, Math.min(2.5, (theme.fontSize || 44) / 44));
+  const timerScale = Math.max(0.5, Math.min(3.0, (timerState.fontSizeScale || 100) / 100));
+
   const verseLength = (cleanVerseText || '').length;
-  let dynamicScriptureFontSize = 'clamp(58px, 7.2vw, 102px)';
+  let dynamicScriptureFontSize = `clamp(${Math.round(58 * textScale)}px, ${(7.2 * textScale).toFixed(1)}vw, ${Math.round(102 * textScale)}px)`;
   let dynamicLineHeight = 1.38;
 
   if (verseLength < 65) {
     // Ultra short verses (e.g. "Jesus wept.", "Rejoice always.")
-    dynamicScriptureFontSize = 'clamp(72px, 8.8vw, 124px)';
+    dynamicScriptureFontSize = `clamp(${Math.round(72 * textScale)}px, ${(8.8 * textScale).toFixed(1)}vw, ${Math.round(124 * textScale)}px)`;
     dynamicLineHeight = 1.32;
   } else if (verseLength < 135) {
     // Standard verse (e.g. John 3:16)
-    dynamicScriptureFontSize = 'clamp(58px, 7.2vw, 102px)';
+    dynamicScriptureFontSize = `clamp(${Math.round(58 * textScale)}px, ${(7.2 * textScale).toFixed(1)}vw, ${Math.round(102 * textScale)}px)`;
     dynamicLineHeight = 1.38;
   } else if (verseLength < 215) {
     // Moderate length verse
-    dynamicScriptureFontSize = 'clamp(48px, 5.8vw, 82px)';
+    dynamicScriptureFontSize = `clamp(${Math.round(48 * textScale)}px, ${(5.8 * textScale).toFixed(1)}vw, ${Math.round(82 * textScale)}px)`;
     dynamicLineHeight = 1.42;
   } else if (verseLength < 320) {
     // Long verse
-    dynamicScriptureFontSize = 'clamp(40px, 4.8vw, 66px)';
+    dynamicScriptureFontSize = `clamp(${Math.round(40 * textScale)}px, ${(4.8 * textScale).toFixed(1)}vw, ${Math.round(66 * textScale)}px)`;
     dynamicLineHeight = 1.45;
   } else {
     // Very long passage
-    dynamicScriptureFontSize = 'clamp(32px, 3.8vw, 52px)';
+    dynamicScriptureFontSize = `clamp(${Math.round(32 * textScale)}px, ${(3.8 * textScale).toFixed(1)}vw, ${Math.round(52 * textScale)}px)`;
     dynamicLineHeight = 1.48;
   }
 
@@ -493,7 +496,7 @@ export const DisplayView: React.FC<DisplayViewProps> = ({
               <div
                 style={{
                   fontFamily: 'Montserrat, "Outfit", "Inter", sans-serif',
-                  fontSize: 'clamp(68px, 8.8vw, 118px)',
+                  fontSize: `clamp(${Math.round(68 * timerScale)}px, ${(8.8 * timerScale).toFixed(1)}vw, ${Math.round(118 * timerScale)}px)`,
                   fontWeight: 900,
                   letterSpacing: '-0.02em',
                   fontVariantNumeric: 'tabular-nums',
@@ -675,9 +678,9 @@ export const DisplayView: React.FC<DisplayViewProps> = ({
                 }),
               }}
             >
-              {/* Overtime indicator badge or Event title pill */}
-              {isOvertime ? (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '1.5rem' }}>
+              {/* Overtime indicator badge (only if in overtime) */}
+              {isOvertime && (
+                <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1.5rem' }}>
                   <span
                     style={{
                       background: '#ef4444',
@@ -693,48 +696,14 @@ export const DisplayView: React.FC<DisplayViewProps> = ({
                   >
                     OVERTIME
                   </span>
-                  {timerState.title && (
-                    <span style={{ fontSize: 'clamp(16px, 1.8vw, 24px)', fontWeight: 800, color: '#fca5a5', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                      {timerState.title}
-                    </span>
-                  )}
                 </div>
-              ) : (
-                timerState.title && (
-                  <div
-                    style={{
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      gap: '8px',
-                      padding: '8px 24px',
-                      borderRadius: '999px',
-                      background: 'rgba(255, 255, 255, 0.08)',
-                      border: '1px solid rgba(255, 255, 255, 0.16)',
-                      backdropFilter: 'blur(12px)',
-                      marginBottom: '1.75rem',
-                      boxShadow: '0 6px 24px rgba(0, 0, 0, 0.35)',
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: 'clamp(14px, 1.6vw, 20px)',
-                        fontWeight: 800,
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.16em',
-                        color: '#f1f5f9',
-                      }}
-                    >
-                      {timerState.title}
-                    </span>
-                  </div>
-                )
               )}
 
               {/* Giant Hero Timer Digits */}
               <div
                 style={{
                   fontFamily: 'Montserrat, "Outfit", "Inter", sans-serif',
-                  fontSize: 'clamp(100px, 17vw, 250px)',
+                  fontSize: `clamp(${Math.round(100 * timerScale)}px, ${(17 * timerScale).toFixed(1)}vw, ${Math.round(250 * timerScale)}px)`,
                   fontWeight: 900,
                   letterSpacing: '-0.035em',
                   fontVariantNumeric: 'tabular-nums',
@@ -763,7 +732,7 @@ export const DisplayView: React.FC<DisplayViewProps> = ({
               <div
                 style={{
                   height: '7px',
-                  width: 'clamp(200px, 32vw, 480px)',
+                  width: `clamp(${Math.round(200 * timerScale)}px, ${(32 * timerScale).toFixed(1)}vw, ${Math.round(480 * timerScale)}px)`,
                   background: isOvertime
                     ? '#ef4444'
                     : isCritical
@@ -783,22 +752,6 @@ export const DisplayView: React.FC<DisplayViewProps> = ({
                   transition: 'background 0.3s ease, box-shadow 0.3s ease',
                 }}
               />
-
-              {/* Speaker / Subtitle if configured */}
-              {timerState.slots && timerState.slots[timerState.activeSlotIndex]?.speaker && (
-                <div
-                  style={{
-                    marginTop: '1.5rem',
-                    fontSize: 'clamp(14px, 1.5vw, 22px)',
-                    fontWeight: 600,
-                    color: '#94a3b8',
-                    letterSpacing: '0.04em',
-                    fontFamily: 'Inter, sans-serif',
-                  }}
-                >
-                  {timerState.slots[timerState.activeSlotIndex]?.speaker}
-                </div>
-              )}
             </div>
           ) : null
         ) : (
@@ -851,10 +804,10 @@ export const DisplayView: React.FC<DisplayViewProps> = ({
                   </svg>
                 </div>
 
-                {/* Dynamic Auto-Adjusted Italic Serif Scripture Verse Text */}
+                {/* Dynamic Auto-Adjusted Scripture Verse Text */}
                 <div
                   style={{
-                    fontFamily: '"Playfair Display", "Merriweather", "Georgia", serif',
+                    fontFamily: theme.fontFamily || '"Playfair Display", "Merriweather", "Georgia", serif',
                     fontSize: dynamicScriptureFontSize,
                     fontWeight: 600,
                     fontStyle: 'italic',
@@ -885,7 +838,7 @@ export const DisplayView: React.FC<DisplayViewProps> = ({
                     <div style={{ width: '70px', height: '1.5px', background: 'rgba(255, 255, 255, 0.25)' }} />
                     <span
                       style={{
-                        fontFamily: 'Inter, Montserrat, sans-serif',
+                        fontFamily: theme.fontFamily || 'Inter, Montserrat, sans-serif',
                         fontSize: 'clamp(20px, 2.2vw, 28px)',
                         fontWeight: 800,
                         color: '#e2e8f0',
