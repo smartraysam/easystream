@@ -20,6 +20,16 @@ import {
   Sliders,
   X,
   Check,
+  Music,
+  Globe,
+  HardDrive,
+  ListPlus,
+  Sparkles,
+  Loader2,
+  Bookmark,
+  BookmarkCheck,
+  Edit,
+  Trash2,
 } from 'lucide-react';
 import { AppState, LiveState, TimerState, LibraryItem, PresentationTheme } from '../types';
 import {
@@ -30,6 +40,65 @@ import {
   BibleSuggestion,
   AVAILABLE_BIBLE_VERSIONS,
 } from '../data/bibleBooks';
+import { parseLyricsToSlides } from '../utils/lyricParser';
+import {
+  getLyricSuggestions,
+  LyricSuggestion,
+  POPULAR_WORSHIP_SONGS,
+  PopularWorshipSong,
+} from '../data/popularWorshipSongs';
+import { SongBankEditorModal } from './SongBankEditorModal';
+
+export interface OnlineSongResult {
+  id: string;
+  trackName: string;
+  artistName: string;
+  albumName?: string;
+  duration?: number;
+  snippet?: string;
+  plainLyrics: string;
+  isLocal?: boolean;
+  localItem?: LibraryItem;
+}
+
+export const DEFAULT_WORSHIP_SONG: OnlineSongResult = {
+  id: 'default-worship-song-1',
+  trackName: 'Goodness of God',
+  artistName: 'Bethel Music / Jenn Johnson',
+  snippet: "I love You Lord, for Your mercy never fails me • All my days I've been held in Your hands",
+  plainLyrics: `[Verse 1]
+I love You, Lord
+For Your mercy never fails me
+All my days, I've been held in Your hands
+From the moment that I wake up
+Until I lay my head
+Oh, I will sing of the goodness of God
+
+[Chorus]
+And all my life You have been faithful
+And all my life You have been so, so good
+With every breath that I am able
+Oh, I will sing of the goodness of God
+
+[Verse 2]
+I love Your voice
+You have led me through the fire
+In the darkest night You are close like no other
+I've known You as a Father
+I've known You as a Friend
+And I have lived in the goodness of God
+
+[Bridge]
+Your goodness is running after
+It's running after me
+Your goodness is running after
+It's running after me
+With my life laid down, I'm surrendered now
+I give You everything
+Your goodness is running after
+It's running after me`,
+  isLocal: false,
+};
 
 interface OnlineScriptureVerse {
   verse: number;
@@ -97,6 +166,7 @@ interface V2PresenterProps {
   setTimerPrompt: (message: string | null, visible: boolean) => void;
   onUpdateTheme?: (theme: Partial<PresentationTheme>) => void;
   onSaveLibraryItem?: (item: LibraryItem) => void;
+  onDeleteLibraryItem?: (id: string) => void;
   onAddToSchedule?: (item: LibraryItem) => void;
 }
 
@@ -114,11 +184,40 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
   setTimerConfig,
   setTimerPrompt,
   onUpdateTheme,
+  onSaveLibraryItem,
+  onDeleteLibraryItem,
+  onAddToSchedule,
 }) => {
+  // -------------------------------------------------------------
+  // Mode Switcher Tab State: 'scripture' | 'lyrics'
+  // -------------------------------------------------------------
+  const [activeTab, setActiveTab] = useState<'scripture' | 'lyrics'>('scripture');
+
   // -------------------------------------------------------------
   // Typography & Styling Modal State
   // -------------------------------------------------------------
   const [showTypographyModal, setShowTypographyModal] = useState(false);
+
+  // -------------------------------------------------------------
+  // Lyric Projection & Search State (Local + Online)
+  // -------------------------------------------------------------
+  const [lyricsQuery, setLyricsQuery] = useState('');
+  const [lyricsScope, setLyricsScope] = useState<'all' | 'local' | 'online'>('all');
+  const [lyricsSplitMode, setLyricsSplitMode] = useState<'smart' | 'stanzas' | 'lines'>('smart');
+  const [lyricsLoading, setLyricsLoading] = useState(false);
+  const [onlineSongResults, setOnlineSongResults] = useState<OnlineSongResult[]>([]);
+  const [selectedSong, setSelectedSong] = useState<OnlineSongResult | null>(DEFAULT_WORSHIP_SONG);
+  const [selectedLyricSlideIndex, setSelectedLyricSlideIndex] = useState(0);
+  const [showLyricSuggestions, setShowLyricSuggestions] = useState(false);
+  const [activeLyricIndex, setActiveLyricIndex] = useState(-1);
+  const [lyricSaveFeedback, setLyricSaveFeedback] = useState<string | null>(null);
+  const [isSongEditorOpen, setIsSongEditorOpen] = useState(false);
+  const [editingSong, setEditingSong] = useState<Partial<LibraryItem> | Partial<OnlineSongResult> | null>(null);
+
+  const lyricSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const lyricSuggestionsRef = useRef<HTMLDivElement | null>(null);
+  const lyricSearchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // -------------------------------------------------------------
   // Top Scripture Search State
   // -------------------------------------------------------------
@@ -172,10 +271,273 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
       ) {
         setShowSuggestions(false);
       }
+      if (
+        lyricSearchInputRef.current &&
+        !lyricSearchInputRef.current.contains(e.target as Node) &&
+        lyricSuggestionsRef.current &&
+        !lyricSuggestionsRef.current.contains(e.target as Node)
+      ) {
+        setShowLyricSuggestions(false);
+      }
     };
     document.addEventListener('mousedown', handleOutsideClick);
     return () => document.removeEventListener('mousedown', handleOutsideClick);
   }, []);
+
+  // -------------------------------------------------------------
+  // Lyric Search, Suggestions & Local Library Matching
+  // -------------------------------------------------------------
+  // 1. Matches from local church library
+  const localSongMatches: OnlineSongResult[] = useMemo(() => {
+    const q = lyricsQuery.trim().toLowerCase();
+    const items = state.library || [];
+    const songItems = items.filter(
+      (item) => item.category === 'song' || item.category === 'hymn' || item.category === 'custom'
+    );
+
+    if (!q) {
+      return songItems.map((item) => ({
+        id: item.id,
+        trackName: item.title,
+        artistName: item.author || 'Local Church Library',
+        snippet: item.lines?.slice(0, 2).join(' • ') || '',
+        plainLyrics: item.content || item.lines?.join('\n') || '',
+        isLocal: true,
+        localItem: item,
+      }));
+    }
+
+    return songItems
+      .filter((item) => {
+        return (
+          item.title.toLowerCase().includes(q) ||
+          (item.author && item.author.toLowerCase().includes(q)) ||
+          (item.content && item.content.toLowerCase().includes(q))
+        );
+      })
+      .map((item) => ({
+        id: item.id,
+        trackName: item.title,
+        artistName: item.author || 'Local Church Library',
+        snippet: item.lines?.slice(0, 2).join(' • ') || '',
+        plainLyrics: item.content || item.lines?.join('\n') || '',
+        isLocal: true,
+        localItem: item,
+      }));
+  }, [state.library, lyricsQuery]);
+
+  // 2. Combined song results based on selected scope
+  const combinedSongResults: OnlineSongResult[] = useMemo(() => {
+    if (lyricsScope === 'local') {
+      return localSongMatches;
+    }
+    if (lyricsScope === 'online') {
+      return onlineSongResults;
+    }
+    const localTitles = new Set(localSongMatches.map((m) => m.trackName.toLowerCase()));
+    const filteredOnline = onlineSongResults.filter(
+      (online) => !localTitles.has(online.trackName.toLowerCase())
+    );
+    return [...localSongMatches, ...filteredOnline];
+  }, [lyricsScope, localSongMatches, onlineSongResults]);
+
+  // 3. Autocomplete suggestions for song lyrics
+  const lyricSuggestions: LyricSuggestion[] = useMemo(() => {
+    if (!lyricsQuery.trim() || !showLyricSuggestions) return [];
+    return getLyricSuggestions(lyricsQuery, state.library || []);
+  }, [lyricsQuery, showLyricSuggestions, state.library]);
+
+  // 4. Parse selected song lyrics into slides
+  const lyricSlides: string[] = useMemo(() => {
+    if (!selectedSong || !selectedSong.plainLyrics) return [];
+    return parseLyricsToSlides(selectedSong.plainLyrics, lyricsSplitMode);
+  }, [selectedSong, lyricsSplitMode]);
+
+  // 5. Debounced online lyrics search
+  useEffect(() => {
+    if (activeTab !== 'lyrics') return;
+    if (lyricSearchTimeoutRef.current) clearTimeout(lyricSearchTimeoutRef.current);
+
+    if (!lyricsQuery.trim()) {
+      setOnlineSongResults([]);
+      setLyricsLoading(false);
+      return;
+    }
+
+    if (lyricsScope === 'local') {
+      setOnlineSongResults([]);
+      setLyricsLoading(false);
+      return;
+    }
+
+    setLyricsLoading(true);
+    lyricSearchTimeoutRef.current = setTimeout(async () => {
+      try {
+        const apiBase = import.meta.env.VITE_API_URL || '';
+        const res = await fetch(`${apiBase}/api/lyrics/search?q=${encodeURIComponent(lyricsQuery.trim())}`);
+        const data = await res.json();
+        const songs: OnlineSongResult[] = (data.results || []).map((s: OnlineSongResult) => ({
+          ...s,
+          isLocal: false,
+        }));
+        setOnlineSongResults(songs);
+        if (songs.length > 0 && (!selectedSong || selectedSong.id === DEFAULT_WORSHIP_SONG.id)) {
+          if (localSongMatches.length > 0) {
+            setSelectedSong(localSongMatches[0]);
+          } else {
+            setSelectedSong(songs[0]);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to search lyrics:', err);
+      } finally {
+        setLyricsLoading(false);
+      }
+    }, 350);
+
+    return () => {
+      if (lyricSearchTimeoutRef.current) clearTimeout(lyricSearchTimeoutRef.current);
+    };
+  }, [lyricsQuery, lyricsScope, activeTab, localSongMatches.length]);
+
+  const handleSelectSong = (song: OnlineSongResult) => {
+    setSelectedSong(song);
+    setSelectedLyricSlideIndex(0);
+    setShowLyricSuggestions(false);
+  };
+
+  const handleSelectLyricSuggestion = (sug: LyricSuggestion) => {
+    setLyricsQuery(sug.title);
+    setShowLyricSuggestions(false);
+    if (sug.isLocal && sug.localItem) {
+      const match: OnlineSongResult = {
+        id: sug.localItem.id,
+        trackName: sug.localItem.title,
+        artistName: sug.localItem.author || 'Local Church Library',
+        snippet: sug.localItem.lines?.slice(0, 2).join(' • ') || '',
+        plainLyrics: sug.localItem.content || sug.localItem.lines?.join('\n') || '',
+        isLocal: true,
+        localItem: sug.localItem,
+      };
+      setSelectedSong(match);
+      setSelectedLyricSlideIndex(0);
+    }
+  };
+
+  // Check if selected song is saved in local library
+  const isSelectedSongSaved = useMemo(() => {
+    if (!selectedSong) return false;
+    if (selectedSong.isLocal) return true;
+    return (state.library || []).some(
+      (item) =>
+        item.title.toLowerCase().trim() === selectedSong.trackName.toLowerCase().trim()
+    );
+  }, [selectedSong, state.library]);
+
+  const handleSaveSongToLibrary = (song: OnlineSongResult) => {
+    if (!onSaveLibraryItem) return;
+    const slides = parseLyricsToSlides(song.plainLyrics, lyricsSplitMode);
+    const existingLocal = (state.library || []).find(
+      (i) => i.id === song.localItem?.id || i.title.toLowerCase().trim() === song.trackName.toLowerCase().trim()
+    );
+    const item: LibraryItem = {
+      id: song.localItem?.id || existingLocal?.id || `song-${song.trackName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now().toString(36)}`,
+      title: song.trackName,
+      author: song.artistName,
+      category: (song.localItem?.category as any) || existingLocal?.category || 'song',
+      content: song.plainLyrics,
+      lines: slides,
+      createdAt: song.localItem?.createdAt || existingLocal?.createdAt || Date.now(),
+      updatedAt: Date.now(),
+    };
+    onSaveLibraryItem(item);
+    setSelectedSong((prev) => {
+      if (!prev || prev.id !== song.id) return prev;
+      return {
+        ...prev,
+        isLocal: true,
+        localItem: item,
+      };
+    });
+    setLyricSaveFeedback(`"${song.trackName}" saved to Song Bank!`);
+    setTimeout(() => setLyricSaveFeedback(null), 3000);
+  };
+
+  const handleOpenAddSong = () => {
+    setEditingSong(null);
+    setIsSongEditorOpen(true);
+  };
+
+  const handleOpenEditSong = (song: OnlineSongResult) => {
+    const existingLocal = (state.library || []).find(
+      (i) => i.id === song.localItem?.id || i.title.toLowerCase().trim() === song.trackName.toLowerCase().trim()
+    );
+    setEditingSong({
+      id: song.localItem?.id || existingLocal?.id,
+      title: song.trackName,
+      author: song.artistName,
+      category: (song.localItem?.category as any) || existingLocal?.category || 'song',
+      content: song.plainLyrics,
+      plainLyrics: song.plainLyrics,
+      splitMode: lyricsSplitMode,
+    });
+    setIsSongEditorOpen(true);
+  };
+
+  const handleSaveSongFromEditor = (item: LibraryItem) => {
+    if (onSaveLibraryItem) {
+      onSaveLibraryItem(item);
+    }
+    const onlineFormat: OnlineSongResult = {
+      id: item.id,
+      trackName: item.title,
+      artistName: item.author || 'Local Church Library',
+      snippet: item.lines?.slice(0, 2).join(' • ') || '',
+      plainLyrics: item.content || item.lines?.join('\n') || '',
+      isLocal: true,
+      localItem: item,
+    };
+    setSelectedSong(onlineFormat);
+    setSelectedLyricSlideIndex(0);
+    setLyricSaveFeedback(`"${item.title}" saved to Song Bank!`);
+    setTimeout(() => setLyricSaveFeedback(null), 3000);
+  };
+
+  const handleSaveAndGoLiveFromEditor = (item: LibraryItem) => {
+    handleSaveSongFromEditor(item);
+    onSetLines(item.title, item.author || 'Worship', item.lines, 'song');
+    onJumpTo(0);
+    if (state.liveState.isClearText) {
+      onUpdateLiveState({ isClearText: false });
+    }
+    setLiveFeedback(true);
+    setTimeout(() => setLiveFeedback(false), 2000);
+  };
+
+  const handleSaveAndAddToScheduleFromEditor = (item: LibraryItem) => {
+    handleSaveSongFromEditor(item);
+    if (onAddToSchedule) {
+      onAddToSchedule(item);
+    }
+  };
+
+  const handleAddSongToSchedule = (song: OnlineSongResult) => {
+    if (!onAddToSchedule) return;
+    const slides = parseLyricsToSlides(song.plainLyrics, lyricsSplitMode);
+    const item: LibraryItem = {
+      id: song.localItem?.id || `song-${song.trackName.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${Date.now().toString(36)}`,
+      title: song.trackName,
+      author: song.artistName,
+      category: 'song',
+      content: song.plainLyrics,
+      lines: slides,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    onAddToSchedule(item);
+    setLyricSaveFeedback(`"${song.trackName}" added to service schedule!`);
+    setTimeout(() => setLyricSaveFeedback(null), 3000);
+  };
 
   // Close Typography modal on Escape key
   useEffect(() => {
@@ -471,15 +833,34 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
   };
 
   // Go Live with current slides
-  const handleGoLive = (slideIdx = selectedSlideIndex) => {
+  const handleGoLive = (slideIdx?: number) => {
+    if (activeTab === 'lyrics') {
+      if (!selectedSong || lyricSlides.length === 0) return;
+      const targetIdx = typeof slideIdx === 'number' ? slideIdx : selectedLyricSlideIndex;
+      onSetLines(
+        selectedSong.trackName,
+        selectedSong.artistName || 'Worship',
+        lyricSlides,
+        'song'
+      );
+      onJumpTo(targetIdx);
+      if (state.liveState.isClearText) {
+        onUpdateLiveState({ isClearText: false });
+      }
+      setLiveFeedback(true);
+      setTimeout(() => setLiveFeedback(false), 2000);
+      return;
+    }
+
     if (!scriptureResult || generatedSlides.length === 0) return;
+    const targetIdx = typeof slideIdx === 'number' ? slideIdx : selectedSlideIndex;
     onSetLines(
       scriptureResult.reference,
       scriptureResult.versionName || scriptureResult.version,
       generatedSlides,
       'scripture'
     );
-    onJumpTo(slideIdx);
+    onJumpTo(targetIdx);
     if (state.liveState.isClearText) {
       onUpdateLiveState({ isClearText: false });
     }
@@ -489,18 +870,34 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
 
   // Slide transport navigation
   const handleNextSlide = () => {
-    if (selectedSlideIndex < generatedSlides.length - 1) {
-      const nextIdx = selectedSlideIndex + 1;
-      setSelectedSlideIndex(nextIdx);
-      onJumpTo(nextIdx);
+    if (activeTab === 'lyrics') {
+      if (selectedLyricSlideIndex < lyricSlides.length - 1) {
+        const nextIdx = selectedLyricSlideIndex + 1;
+        setSelectedLyricSlideIndex(nextIdx);
+        onJumpTo(nextIdx);
+      }
+    } else {
+      if (selectedSlideIndex < generatedSlides.length - 1) {
+        const nextIdx = selectedSlideIndex + 1;
+        setSelectedSlideIndex(nextIdx);
+        onJumpTo(nextIdx);
+      }
     }
   };
 
   const handlePrevSlide = () => {
-    if (selectedSlideIndex > 0) {
-      const prevIdx = selectedSlideIndex - 1;
-      setSelectedSlideIndex(prevIdx);
-      onJumpTo(prevIdx);
+    if (activeTab === 'lyrics') {
+      if (selectedLyricSlideIndex > 0) {
+        const prevIdx = selectedLyricSlideIndex - 1;
+        setSelectedLyricSlideIndex(prevIdx);
+        onJumpTo(prevIdx);
+      }
+    } else {
+      if (selectedSlideIndex > 0) {
+        const prevIdx = selectedSlideIndex - 1;
+        setSelectedSlideIndex(prevIdx);
+        onJumpTo(prevIdx);
+      }
     }
   };
 
@@ -523,7 +920,7 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedSlideIndex, generatedSlides]);
+  }, [activeTab, selectedSlideIndex, selectedLyricSlideIndex, generatedSlides, lyricSlides, selectedSong, scriptureResult]);
 
   // Open borderless window
   const openBorderlessWindow = (url: string, name: string) => {
@@ -625,21 +1022,28 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                 width: '32px',
                 height: '32px',
                 borderRadius: '8px',
-                background: 'linear-gradient(135deg, #0ea5e9 0%, #3b82f6 100%)',
+                background:
+                  activeTab === 'lyrics'
+                    ? 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)'
+                    : 'linear-gradient(135deg, #0ea5e9 0%, #3b82f6 100%)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: '0 0 16px rgba(14, 165, 233, 0.4)',
+                boxShadow:
+                  activeTab === 'lyrics'
+                    ? '0 0 16px rgba(139, 92, 246, 0.4)'
+                    : '0 0 16px rgba(14, 165, 233, 0.4)',
+                transition: 'all 0.2s ease',
               }}
             >
-              <BookOpen size={18} color="#ffffff" />
+              {activeTab === 'lyrics' ? <Music size={18} color="#ffffff" /> : <BookOpen size={18} color="#ffffff" />}
             </div>
             <div>
               <div style={{ fontSize: '15px', fontWeight: 900, letterSpacing: '-0.02em', color: '#ffffff' }}>
-                EasyStream <span style={{ color: '#38bdf8' }}>V2</span>
+                EasyStream <span style={{ color: activeTab === 'lyrics' ? '#a78bfa' : '#38bdf8' }}>V2</span>
               </div>
               <div style={{ fontSize: '10px', color: '#94a3b8', fontWeight: 600 }}>
-                Scripture & Countdown Presenter
+                {activeTab === 'lyrics' ? 'Worship Lyrics Presenter' : 'Scripture & Countdown Presenter'}
               </div>
             </div>
           </div>
@@ -670,104 +1074,6 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
           </div>
         </div>
 
-        {/* Center: PRIMARY GO LIVE BUTTON & LOCAL CACHE BADGE (MOVED TO TOP HEADER) */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          {/* LOCAL CACHE / SOURCE BADGE */}
-          {/* {scriptureResult?.source === 'local' ? (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                padding: '5px 12px',
-                borderRadius: '999px',
-                background: 'rgba(16, 185, 129, 0.18)',
-                border: '1.5px solid rgba(16, 185, 129, 0.45)',
-                color: '#34d399',
-                fontSize: '11px',
-                fontWeight: 800,
-                letterSpacing: '0.04em',
-                boxShadow: '0 0 12px rgba(16, 185, 129, 0.25)',
-              }}
-              title="Fast offline instant cache: loaded directly from local database"
-            >
-              <Zap size={13} fill="#34d399" color="transparent" />
-              <span>LOCAL CACHE</span>
-            </div>
-          ) : (
-            <div
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '5px',
-                padding: '5px 12px',
-                borderRadius: '999px',
-                background: 'rgba(56, 189, 248, 0.12)',
-                border: '1px solid rgba(56, 189, 248, 0.35)',
-                color: '#38bdf8',
-                fontSize: '11px',
-                fontWeight: 700,
-              }}
-            >
-              <Globe size={13} />
-              <span>ONLINE BIBLE</span>
-            </div>
-          )} */}
-
-
-          {/* PRIMARY GO LIVE BUTTON IN TOP HEADER */}
-          {/* <button
-            onClick={() => handleGoLive(selectedSlideIndex)}
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '8px 22px',
-              borderRadius: '8px',
-              background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
-              color: '#ffffff',
-              fontWeight: 900,
-              fontSize: '13px',
-              border: 'none',
-              cursor: 'pointer',
-              boxShadow: '0 0 25px rgba(239, 68, 68, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.3)',
-              letterSpacing: '0.04em',
-              transition: 'transform 0.1s ease, box-shadow 0.1s ease',
-            }}
-            title="Broadcast active verse to Live Display Screen (Enter)"
-          >
-            <Radio size={16} />
-            <span>GO LIVE (Enter)</span>
-          </button> */}
-
-          {/* Live indicator badge */}
-          {/* <div
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '5px',
-              padding: '4px 9px',
-              borderRadius: '999px',
-              background: isLiveScriptureCategory ? 'rgba(239, 68, 68, 0.2)' : 'rgba(100, 116, 139, 0.2)',
-              border: isLiveScriptureCategory ? '1px solid #ef4444' : '1px solid rgba(255, 255, 255, 0.1)',
-              fontSize: '10px',
-              fontWeight: 800,
-              color: isLiveScriptureCategory ? '#f87171' : '#94a3b8',
-            }}
-          >
-            <span
-              style={{
-                width: '6px',
-                height: '6px',
-                borderRadius: '50%',
-                background: isLiveScriptureCategory ? '#ef4444' : '#64748b',
-                boxShadow: isLiveScriptureCategory ? '0 0 8px #ef4444' : 'none',
-              }}
-            />
-            <span>{isLiveScriptureCategory ? 'LIVE ON SCREEN' : 'STANDBY'}</span>
-          </div> */}
-        </div>
-
         {/* Right Actions: Display Screen & Studio Switcher */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
           {liveFeedback && (
@@ -782,6 +1088,20 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
               }}
             >
               <CheckCheck size={16} /> Sent Live!
+            </span>
+          )}
+          {lyricSaveFeedback && (
+            <span
+              style={{
+                fontSize: '12px',
+                color: '#c084fc',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                fontWeight: 700,
+              }}
+            >
+              <CheckCheck size={16} /> {lyricSaveFeedback}
             </span>
           )}
 
@@ -1311,20 +1631,559 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
       </section>
 
       {/* ============================================================= */}
-      {/* 3. PROMINENT SCRIPTURE SEARCH WITH LIVE AUTOCOMPLETE DROPDOWN */}
+      {/* 2.5. PROJECTION MODE TABS (UNDER TIME CONTROL SECTION)        */}
       {/* ============================================================= */}
-      <section
+      <div
         style={{
-          padding: '12px 20px',
-          background: 'rgba(15, 23, 42, 0.85)',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
           display: 'flex',
-          flexDirection: 'column',
-          gap: '10px',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          padding: '8px 20px',
+          background: 'linear-gradient(90deg, #0a0f1d 0%, #0d1527 100%)',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
           flexShrink: 0,
-          position: 'relative',
+          gap: '12px',
         }}
       >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <span
+            style={{
+              fontSize: '11px',
+              fontWeight: 800,
+              color: '#64748b',
+              textTransform: 'uppercase',
+              letterSpacing: '0.06em',
+            }}
+          >
+            MODE:
+          </span>
+
+          {/* Segmented Pill Tabs */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              background: 'rgba(0, 0, 0, 0.55)',
+              padding: '3px',
+              borderRadius: '10px',
+              border: '1px solid rgba(255, 255, 255, 0.1)',
+              gap: '4px',
+            }}
+          >
+            <button
+              onClick={() => setActiveTab('scripture')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '7px 18px',
+                borderRadius: '7px',
+                background:
+                  activeTab === 'scripture'
+                    ? 'linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)'
+                    : 'transparent',
+                color: activeTab === 'scripture' ? '#ffffff' : '#94a3b8',
+                fontWeight: 800,
+                fontSize: '13px',
+                border: 'none',
+                cursor: 'pointer',
+                boxShadow:
+                  activeTab === 'scripture'
+                    ? '0 0 16px rgba(14, 165, 233, 0.45)'
+                    : 'none',
+                transition: 'all 0.15s ease',
+              }}
+              title="Switch to Scripture Presentation mode (Bible books, chapters, verses)"
+            >
+              <BookOpen size={15} />
+              <span>Scripture Projection</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab('lyrics')}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '7px 18px',
+                borderRadius: '7px',
+                background:
+                  activeTab === 'lyrics'
+                    ? 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)'
+                    : 'transparent',
+                color: activeTab === 'lyrics' ? '#ffffff' : '#94a3b8',
+                fontWeight: 800,
+                fontSize: '13px',
+                border: 'none',
+                cursor: 'pointer',
+                boxShadow:
+                  activeTab === 'lyrics'
+                    ? '0 0 16px rgba(139, 92, 246, 0.45)'
+                    : 'none',
+                transition: 'all 0.15s ease',
+              }}
+              title="Switch to Lyric Presentation mode (Search church local library & online worship songs)"
+            >
+              <Music size={15} />
+              <span>Lyric Projection</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Right Contextual Helper */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {activeTab === 'scripture' ? (
+            <span
+              style={{
+                fontSize: '11px',
+                color: '#38bdf8',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              <BookOpen size={13} />
+              <span>66 Books • Chapters • Verses • Multi-Version Quick Navigation</span>
+            </span>
+          ) : (
+            <span
+              style={{
+                fontSize: '11px',
+                color: '#c084fc',
+                fontWeight: 600,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+              }}
+            >
+              <Music size={13} />
+              <span>Church Library • Online LRCLIB Catalog • Smart Stanza Split</span>
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* ============================================================= */}
+      {/* 3. PROMINENT SEARCH BAR (SCRIPTURE VS LYRICS)                  */}
+      {/* ============================================================= */}
+      {activeTab === 'lyrics' ? (
+        <section
+          style={{
+            padding: '12px 20px',
+            background: 'rgba(15, 23, 42, 0.85)',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px',
+            flexShrink: 0,
+            position: 'relative',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', position: 'relative' }}>
+            {/* Lyric Search Input with Suggestions */}
+            <div style={{ position: 'relative', flex: 1 }}>
+              <Search
+                size={18}
+                color="#a78bfa"
+                style={{
+                  position: 'absolute',
+                  left: '14px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  zIndex: 2,
+                }}
+              />
+              <input
+                ref={lyricSearchInputRef}
+                type="text"
+                value={lyricsQuery}
+                onChange={(e) => {
+                  setLyricsQuery(e.target.value);
+                  setShowLyricSuggestions(true);
+                  setActiveLyricIndex(-1);
+                }}
+                onFocus={() => {
+                  if (lyricsQuery.trim()) setShowLyricSuggestions(true);
+                }}
+                onKeyDown={(e) => {
+                  if (showLyricSuggestions && lyricSuggestions.length > 0) {
+                    if (e.key === 'ArrowDown') {
+                      e.preventDefault();
+                      setActiveLyricIndex((prev) =>
+                        prev < lyricSuggestions.length - 1 ? prev + 1 : 0
+                      );
+                    } else if (e.key === 'ArrowUp') {
+                      e.preventDefault();
+                      setActiveLyricIndex((prev) =>
+                        prev > 0 ? prev - 1 : lyricSuggestions.length - 1
+                      );
+                    } else if (e.key === 'Enter') {
+                      e.preventDefault();
+                      if (activeLyricIndex >= 0 && activeLyricIndex < lyricSuggestions.length) {
+                        handleSelectLyricSuggestion(lyricSuggestions[activeLyricIndex]);
+                      } else {
+                        setShowLyricSuggestions(false);
+                      }
+                    } else if (e.key === 'Escape') {
+                      setShowLyricSuggestions(false);
+                    }
+                  } else if (e.key === 'Enter') {
+                    if (combinedSongResults.length > 0) {
+                      handleSelectSong(combinedSongResults[0]);
+                    }
+                  }
+                }}
+                placeholder="Search worship songs by title, artist, or lyric lines (Local library & online catalog)..."
+                style={{
+                  width: '100%',
+                  padding: '11px 40px 11px 44px',
+                  borderRadius: '10px',
+                  background: 'rgba(0, 0, 0, 0.45)',
+                  border: '1.5px solid rgba(139, 92, 246, 0.35)',
+                  boxShadow: '0 0 20px rgba(139, 92, 246, 0.15)',
+                  color: '#ffffff',
+                  fontSize: '15px',
+                  fontWeight: 600,
+                  outline: 'none',
+                }}
+              />
+
+              <div
+                style={{
+                  position: 'absolute',
+                  right: '12px',
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  zIndex: 2,
+                }}
+              >
+                {lyricsLoading && (
+                  <Loader2 size={16} color="#a78bfa" className="animate-spin" />
+                )}
+                {lyricsQuery && (
+                  <button
+                    onClick={() => {
+                      setLyricsQuery('');
+                      setShowLyricSuggestions(false);
+                    }}
+                    style={{
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      border: 'none',
+                      borderRadius: '50%',
+                      width: '20px',
+                      height: '20px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#94a3b8',
+                      cursor: 'pointer',
+                    }}
+                    title="Clear query"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+
+              {/* Autocomplete Dropdown */}
+              {showLyricSuggestions && lyricSuggestions.length > 0 && (
+                <div
+                  ref={lyricSuggestionsRef}
+                  style={{
+                    position: 'absolute',
+                    top: 'calc(100% + 6px)',
+                    left: 0,
+                    right: 0,
+                    background: '#0b1120',
+                    border: '1px solid rgba(139, 92, 246, 0.35)',
+                    borderRadius: '10px',
+                    boxShadow: '0 15px 35px rgba(0, 0, 0, 0.8), 0 0 25px rgba(139, 92, 246, 0.2)',
+                    zIndex: 100,
+                    overflow: 'hidden',
+                    maxHeight: '320px',
+                    overflowY: 'auto',
+                  }}
+                >
+                  <div
+                    style={{
+                      padding: '8px 14px',
+                      fontSize: '10px',
+                      fontWeight: 800,
+                      color: '#94a3b8',
+                      textTransform: 'uppercase',
+                      borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      background: 'rgba(15, 23, 42, 0.8)',
+                    }}
+                  >
+                    <span>Suggested Songs</span>
+                    <span>Local & Online</span>
+                  </div>
+                  {lyricSuggestions.map((sug, idx) => {
+                    const isActive = idx === activeLyricIndex;
+                    return (
+                      <div
+                        key={`${sug.title}-${idx}`}
+                        onClick={() => handleSelectLyricSuggestion(sug)}
+                        style={{
+                          padding: '10px 14px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          cursor: 'pointer',
+                          background: isActive
+                            ? 'rgba(139, 92, 246, 0.2)'
+                            : 'transparent',
+                          borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
+                          transition: 'background 0.1s',
+                        }}
+                      >
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                          {sug.isLocal ? (
+                            <HardDrive size={15} color="#34d399" />
+                          ) : (
+                            <Globe size={15} color="#a78bfa" />
+                          )}
+                          <div>
+                            <div style={{ fontSize: '13px', fontWeight: 700, color: '#ffffff' }}>
+                              {sug.title}
+                            </div>
+                            <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                              {sug.artist}
+                            </div>
+                          </div>
+                        </div>
+
+                        <span
+                          style={{
+                            fontSize: '10px',
+                            fontWeight: 800,
+                            padding: '2px 8px',
+                            borderRadius: '999px',
+                            background: sug.isLocal ? 'rgba(16, 185, 129, 0.18)' : 'rgba(139, 92, 246, 0.18)',
+                            color: sug.isLocal ? '#34d399' : '#c084fc',
+                            border: sug.isLocal ? '1px solid rgba(16, 185, 129, 0.35)' : '1px solid rgba(139, 92, 246, 0.35)',
+                          }}
+                        >
+                          {sug.isLocal ? 'Church Library' : 'Online'}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Scope Filter Pills: All | Local Library | Online Search */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                background: 'rgba(0, 0, 0, 0.45)',
+                padding: '3px',
+                borderRadius: '8px',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                gap: '3px',
+              }}
+            >
+              <button
+                onClick={() => setLyricsScope('all')}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  background: lyricsScope === 'all' ? 'rgba(139, 92, 246, 0.25)' : 'transparent',
+                  color: lyricsScope === 'all' ? '#c084fc' : '#94a3b8',
+                  border: lyricsScope === 'all' ? '1px solid #8b5cf6' : '1px solid transparent',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+              >
+                <span>All ({combinedSongResults.length})</span>
+              </button>
+
+              <button
+                onClick={() => setLyricsScope('local')}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  background: lyricsScope === 'local' ? 'rgba(16, 185, 129, 0.25)' : 'transparent',
+                  color: lyricsScope === 'local' ? '#34d399' : '#94a3b8',
+                  border: lyricsScope === 'local' ? '1px solid #10b981' : '1px solid transparent',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+                title="Search and browse local church song library only"
+              >
+                <HardDrive size={12} />
+                <span>Local ({localSongMatches.length})</span>
+              </button>
+
+              <button
+                onClick={() => setLyricsScope('online')}
+                style={{
+                  padding: '6px 12px',
+                  borderRadius: '6px',
+                  background: lyricsScope === 'online' ? 'rgba(56, 189, 248, 0.25)' : 'transparent',
+                  color: lyricsScope === 'online' ? '#38bdf8' : '#94a3b8',
+                  border: lyricsScope === 'online' ? '1px solid #38bdf8' : '1px solid transparent',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                }}
+                title="Search online worship lyrics catalog directly"
+              >
+                <Globe size={12} />
+                <span>Online ({onlineSongResults.length})</span>
+              </button>
+            </div>
+
+            {/* Split Mode Selector */}
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                background: 'rgba(0, 0, 0, 0.45)',
+                padding: '3px 8px',
+                borderRadius: '8px',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+              }}
+              title="How song lyrics are split into presentation slides"
+            >
+              <span style={{ fontSize: '10px', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase' }}>
+                Split:
+              </span>
+              <select
+                value={lyricsSplitMode}
+                onChange={(e) => setLyricsSplitMode(e.target.value as any)}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#ffffff',
+                  fontSize: '11px',
+                  fontWeight: 800,
+                  outline: 'none',
+                  cursor: 'pointer',
+                }}
+              >
+                <option value="smart" style={{ background: '#0f172a' }}>Smart (2-3 Lines)</option>
+                <option value="stanzas" style={{ background: '#0f172a' }}>Full Stanzas</option>
+                <option value="lines" style={{ background: '#0f172a' }}>Single Line</option>
+              </select>
+            </div>
+
+            {/* Manual Add / Paste Lyric Button */}
+            <button
+              onClick={handleOpenAddSong}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '8px 14px',
+                borderRadius: '8px',
+                background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.25) 0%, rgba(99, 102, 241, 0.18) 100%)',
+                border: '1.5px solid rgba(139, 92, 246, 0.5)',
+                color: '#c084fc',
+                fontWeight: 800,
+                fontSize: '12px',
+                cursor: 'pointer',
+                boxShadow: '0 0 15px rgba(139, 92, 246, 0.2)',
+                whiteSpace: 'nowrap',
+                transition: 'all 0.15s ease',
+              }}
+              title="Manually paste or write lyrics to add a worship song to your bank"
+            >
+              <Plus size={14} />
+              <span>+ Manual Add Lyric</span>
+            </button>
+
+            {/* Go Live Button */}
+            <button
+              onClick={() => handleGoLive(selectedLyricSlideIndex)}
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '9px 20px',
+                borderRadius: '8px',
+                background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                color: '#ffffff',
+                fontWeight: 900,
+                fontSize: '13px',
+                border: 'none',
+                cursor: 'pointer',
+                boxShadow: '0 0 20px rgba(239, 68, 68, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.3)',
+                letterSpacing: '0.04em',
+                flexShrink: 0,
+              }}
+              title="Project selected lyrics to Live Display screen (Enter / F5)"
+            >
+              <Radio size={16} />
+              <span>GO LIVE (Enter)</span>
+            </button>
+          </div>
+
+          {/* Popular Worship Quick Jump Chips */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', overflowX: 'auto', paddingBottom: '2px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', flexShrink: 0 }}>
+              Popular Songs:
+            </span>
+            <div style={{ display: 'flex', gap: '6px', flexWrap: 'nowrap' }}>
+              {POPULAR_WORSHIP_SONGS.slice(0, 10).map((song) => (
+                <button
+                  key={song.title}
+                  onClick={() => {
+                    setLyricsQuery(song.title);
+                    setShowLyricSuggestions(false);
+                  }}
+                  style={{
+                    padding: '3px 9px',
+                    borderRadius: '6px',
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                    color: '#e2e8f0',
+                    fontSize: '11px',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
+                    transition: 'all 0.1s',
+                  }}
+                >
+                  {song.title}
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : (
+        <section
+          style={{
+            padding: '12px 20px',
+            background: 'rgba(15, 23, 42, 0.85)',
+            borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px',
+            flexShrink: 0,
+            position: 'relative',
+          }}
+        >
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px', position: 'relative' }}>
           {/* Main Search Input with Dynamic Dropdown Suggestions */}
           <div style={{ position: 'relative', flex: 1 }}>
@@ -1770,9 +2629,10 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
           </div>
         )}
       </section>
+      )}
 
       {/* ============================================================= */}
-      {/* 4. MAIN WORKSPACE: EASYWORSHIP 3-PANEL BROWSER + SLIDE DECK    */}
+      {/* 4. MAIN WORKSPACE: SCRIPTURE OR LYRIC PRESENTATION + DECK     */}
       {/* ============================================================= */}
       <main
         style={{
@@ -1782,7 +2642,1065 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
           background: '#090d16',
         }}
       >
-        {/* PANEL 1: BOOKS (66) */}
+        {activeTab === 'lyrics' ? (
+          <>
+            {/* PANEL L1: WORSHIP SONG REPOSITORY & SEARCH RESULTS (Local & Online) */}
+            <div
+              style={{
+                width: '320px',
+                flexShrink: 0,
+                borderRight: '1px solid rgba(255, 255, 255, 0.08)',
+                display: 'flex',
+                flexDirection: 'column',
+                background: 'rgba(15, 23, 42, 0.65)',
+              }}
+            >
+              {/* Header */}
+              <div
+                style={{
+                  padding: '12px 16px',
+                  borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  background: 'rgba(255, 255, 255, 0.02)',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Music size={16} color="#c084fc" />
+                  <span style={{ fontSize: '12px', fontWeight: 800, color: '#ffffff', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                    Song Bank
+                  </span>
+                  <span
+                    style={{
+                      fontSize: '11px',
+                      fontWeight: 700,
+                      padding: '2px 7px',
+                      borderRadius: '999px',
+                      background: 'rgba(192, 132, 252, 0.15)',
+                      border: '1px solid rgba(192, 132, 252, 0.3)',
+                      color: '#c084fc',
+                    }}
+                  >
+                    {combinedSongResults.length}
+                  </span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <button
+                    onClick={handleOpenAddSong}
+                    style={{
+                      padding: '4px 9px',
+                      borderRadius: '6px',
+                      background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+                      border: 'none',
+                      color: '#ffffff',
+                      fontSize: '11px',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      boxShadow: '0 0 10px rgba(139, 92, 246, 0.35)',
+                      whiteSpace: 'nowrap',
+                    }}
+                    title="Add new song or paste lyrics manually to Song Bank"
+                  >
+                    <Plus size={12} />
+                    <span>Add</span>
+                  </button>
+
+                  {/* Scope selector */}
+                <div
+                  style={{
+                    display: 'flex',
+                    background: 'rgba(0, 0, 0, 0.4)',
+                    padding: '2px',
+                    borderRadius: '6px',
+                    border: '1px solid rgba(255, 255, 255, 0.08)',
+                  }}
+                >
+                  {(
+                    [
+                      { id: 'all', label: 'All' },
+                      { id: 'local', label: 'Local' },
+                      { id: 'online', label: 'Online' },
+                    ] as const
+                  ).map((scope) => (
+                    <button
+                      key={scope.id}
+                      onClick={() => setLyricsScope(scope.id)}
+                      style={{
+                        padding: '3px 8px',
+                        borderRadius: '4px',
+                        fontSize: '10px',
+                        fontWeight: 700,
+                        border: 'none',
+                        cursor: 'pointer',
+                        background: lyricsScope === scope.id ? '#8b5cf6' : 'transparent',
+                        color: lyricsScope === scope.id ? '#ffffff' : '#94a3b8',
+                        transition: 'all 0.12s',
+                      }}
+                    >
+                      {scope.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Sub-header status badge */}
+              <div
+                style={{
+                  padding: '7px 16px',
+                  background: 'rgba(0, 0, 0, 0.25)',
+                  borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  fontSize: '11px',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', color: '#94a3b8' }}>
+                  {lyricsScope === 'local' ? (
+                    <>
+                      <HardDrive size={13} color="#34d399" />
+                      <span>Church Local Library</span>
+                    </>
+                  ) : lyricsScope === 'online' ? (
+                    <>
+                      <Globe size={13} color="#a78bfa" />
+                      <span>Online LRCLIB Catalog</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles size={13} color="#60a5fa" />
+                      <span>Local Church Library + Online</span>
+                    </>
+                  )}
+                </div>
+                {lyricsLoading && (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', color: '#c084fc', fontSize: '10px', fontWeight: 600 }}>
+                    <Loader2 size={12} className="animate-spin" />
+                    <span>Searching...</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Song list */}
+              <div
+                style={{
+                  flex: 1,
+                  overflowY: 'auto',
+                  padding: '10px',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '8px',
+                }}
+              >
+                {combinedSongResults.length === 0 ? (
+                  <div
+                    style={{
+                      flex: 1,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      textAlign: 'center',
+                      padding: '30px 20px',
+                      color: '#64748b',
+                    }}
+                  >
+                    <Music size={36} color="#475569" style={{ marginBottom: '12px' }} />
+                    <div style={{ fontSize: '13px', fontWeight: 700, color: '#cbd5e1', marginBottom: '6px' }}>
+                      {lyricsLoading ? 'Searching Online Catalog...' : 'No Worship Songs Found'}
+                    </div>
+                    <div style={{ fontSize: '11px', lineHeight: 1.5, maxWidth: '260px', marginBottom: '12px' }}>
+                      {lyricsScope === 'local'
+                        ? 'No matches in your local church library. Try switching scope to "All" or "Online" to fetch from LRCLIB.'
+                        : 'Try searching with common worship titles like "Way Maker", "Goodness of God", "Amazing Grace", or "Gratitude".'}
+                    </div>
+                    <button
+                      onClick={handleOpenAddSong}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '6px 14px',
+                        borderRadius: '6px',
+                        background: 'rgba(139, 92, 246, 0.22)',
+                        border: '1px solid rgba(139, 92, 246, 0.45)',
+                        color: '#c084fc',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease',
+                      }}
+                      title="Paste lyrics and add a song manually to your Song Bank"
+                    >
+                      <Plus size={13} />
+                      <span>Paste / Add Song to Bank</span>
+                    </button>
+                  </div>
+                ) : (
+                  combinedSongResults.map((song) => {
+                    const isSelected = selectedSong?.id === song.id;
+                    const isCurrentlyLive =
+                      state.category === 'song' &&
+                      state.title?.toLowerCase() === song.trackName.toLowerCase() &&
+                      !state.liveState.isBlackout;
+
+                    return (
+                      <div
+                        key={song.id}
+                        onClick={() => handleSelectSong(song)}
+                        style={{
+                          padding: '12px',
+                          borderRadius: '10px',
+                          cursor: 'pointer',
+                          background: isSelected
+                            ? 'linear-gradient(135deg, rgba(139, 92, 246, 0.22) 0%, rgba(99, 102, 241, 0.14) 100%)'
+                            : 'rgba(255, 255, 255, 0.03)',
+                          border: isSelected
+                            ? '1.5px solid rgba(167, 139, 250, 0.7)'
+                            : isCurrentlyLive
+                            ? '1.5px solid rgba(239, 68, 68, 0.6)'
+                            : '1px solid rgba(255, 255, 255, 0.06)',
+                          boxShadow: isSelected
+                            ? '0 6px 20px rgba(139, 92, 246, 0.25)'
+                            : 'none',
+                          transition: 'all 0.15s ease',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          gap: '6px',
+                        }}
+                      >
+                        {/* Top: Title & Scope Badge */}
+                        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '8px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1, minWidth: 0 }}>
+                            <span
+                              style={{
+                                fontSize: '13px',
+                                fontWeight: 800,
+                                color: isSelected ? '#ffffff' : '#f1f5f9',
+                                whiteSpace: 'nowrap',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                              }}
+                            >
+                              {song.trackName}
+                            </span>
+                            {isCurrentlyLive && (
+                              <span
+                                style={{
+                                  fontSize: '9px',
+                                  fontWeight: 900,
+                                  background: '#ef4444',
+                                  color: '#ffffff',
+                                  padding: '1px 5px',
+                                  borderRadius: '4px',
+                                  flexShrink: 0,
+                                }}
+                              >
+                                LIVE
+                              </span>
+                            )}
+                          </div>
+
+                          {song.isLocal ? (
+                            <span
+                              style={{
+                                fontSize: '10px',
+                                fontWeight: 800,
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                background: 'rgba(16, 185, 129, 0.18)',
+                                border: '1px solid rgba(16, 185, 129, 0.35)',
+                                color: '#34d399',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                flexShrink: 0,
+                              }}
+                            >
+                              <HardDrive size={10} /> LOCAL
+                            </span>
+                          ) : (
+                            <span
+                              style={{
+                                fontSize: '10px',
+                                fontWeight: 800,
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                                background: 'rgba(139, 92, 246, 0.18)',
+                                border: '1px solid rgba(139, 92, 246, 0.35)',
+                                color: '#c084fc',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                flexShrink: 0,
+                              }}
+                            >
+                              <Globe size={10} /> ONLINE
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Artist */}
+                        <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 500 }}>
+                          {song.artistName}
+                        </div>
+
+                        {/* Snippet */}
+                        {song.snippet && (
+                          <div
+                            style={{
+                              fontSize: '11px',
+                              color: '#64748b',
+                              fontStyle: 'italic',
+                              lineHeight: 1.3,
+                              overflow: 'hidden',
+                              display: '-webkit-box',
+                              WebkitLineClamp: 2,
+                              WebkitBoxOrient: 'vertical',
+                            }}
+                          >
+                            "{song.snippet}"
+                          </div>
+                        )}
+
+                        {/* Card Footer Actions */}
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            marginTop: '4px',
+                            paddingTop: '6px',
+                            borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            {song.isLocal ? (
+                              <>
+                                <span
+                                  style={{
+                                    fontSize: '10px',
+                                    color: '#34d399',
+                                    fontWeight: 700,
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '3px',
+                                  }}
+                                  title="Saved in your church Song Bank"
+                                >
+                                  <Check size={11} /> In Bank
+                                </span>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenEditSong(song);
+                                  }}
+                                  style={{
+                                    padding: '2px 6px',
+                                    borderRadius: '4px',
+                                    background: 'rgba(255, 255, 255, 0.08)',
+                                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                                    color: '#cbd5e1',
+                                    fontSize: '10px',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '2px',
+                                  }}
+                                  title="Edit lyrics in Song Bank"
+                                >
+                                  <Edit size={10} /> Edit
+                                </button>
+                                {onDeleteLibraryItem && song.localItem?.id && (
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      if (confirm(`Delete "${song.trackName}" from Song Bank?`)) {
+                                        onDeleteLibraryItem(song.localItem!.id);
+                                      }
+                                    }}
+                                    style={{
+                                      padding: '2px 5px',
+                                      borderRadius: '4px',
+                                      background: 'rgba(239, 68, 68, 0.12)',
+                                      border: '1px solid rgba(239, 68, 68, 0.25)',
+                                      color: '#f87171',
+                                      fontSize: '10px',
+                                      cursor: 'pointer',
+                                    }}
+                                    title="Delete from Song Bank"
+                                  >
+                                    <Trash2 size={10} />
+                                  </button>
+                                )}
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleSaveSongToLibrary(song);
+                                  }}
+                                  style={{
+                                    padding: '3px 7px',
+                                    borderRadius: '5px',
+                                    background: 'rgba(16, 185, 129, 0.15)',
+                                    border: '1px solid rgba(16, 185, 129, 0.35)',
+                                    color: '#34d399',
+                                    fontSize: '10px',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '3px',
+                                    transition: 'all 0.12s',
+                                  }}
+                                  title="Save found song to local church Song Bank"
+                                >
+                                  <Bookmark size={10} /> + Bank
+                                </button>
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleOpenEditSong(song);
+                                  }}
+                                  style={{
+                                    padding: '3px 6px',
+                                    borderRadius: '5px',
+                                    background: 'rgba(139, 92, 246, 0.15)',
+                                    border: '1px solid rgba(139, 92, 246, 0.3)',
+                                    color: '#c084fc',
+                                    fontSize: '10px',
+                                    fontWeight: 700,
+                                    cursor: 'pointer',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '2px',
+                                  }}
+                                  title="Edit lyrics and save to Song Bank"
+                                >
+                                  <Edit size={10} /> Edit
+                                </button>
+                              </>
+                            )}
+                          </div>
+
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleAddSongToSchedule(song);
+                              }}
+                              style={{
+                                padding: '3px 8px',
+                                borderRadius: '5px',
+                                background: 'rgba(255, 255, 255, 0.06)',
+                                border: '1px solid rgba(255, 255, 255, 0.1)',
+                                color: '#e2e8f0',
+                                fontSize: '10px',
+                                fontWeight: 700,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                              }}
+                              title="Add to today's presentation schedule"
+                            >
+                              <ListPlus size={10} /> Schedule
+                            </button>
+
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSelectSong(song);
+                                setTimeout(() => handleGoLive(0), 50);
+                              }}
+                              style={{
+                                padding: '3px 9px',
+                                borderRadius: '5px',
+                                background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                                border: 'none',
+                                color: '#ffffff',
+                                fontSize: '10px',
+                                fontWeight: 800,
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '3px',
+                                boxShadow: '0 0 10px rgba(239, 68, 68, 0.3)',
+                              }}
+                              title="Project slide 1 directly to Live Display"
+                            >
+                              <Radio size={10} /> Go Live
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* PANEL L2: LYRIC SLIDE DECK (Center Stage) */}
+            <div
+              style={{
+                flex: 1,
+                display: 'flex',
+                flexDirection: 'column',
+                background: '#090d16',
+                overflow: 'hidden',
+              }}
+            >
+              {/* Deck Header: Song Title, Split Mode, Typography, Go Live */}
+              <div
+                style={{
+                  padding: '12px 20px',
+                  borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  background: 'rgba(15, 23, 42, 0.85)',
+                  gap: '12px',
+                }}
+              >
+                {/* Left: Song Meta */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', minWidth: 0, flex: 1, overflow: 'hidden' }}>
+                  <div
+                    style={{
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '8px',
+                      background: 'rgba(139, 92, 246, 0.15)',
+                      border: '1px solid rgba(139, 92, 246, 0.35)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#c084fc',
+                      flexShrink: 0,
+                    }}
+                  >
+                    <Music size={18} />
+                  </div>
+                  <div style={{ minWidth: 0, flex: 1, overflow: 'hidden' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <span
+                        style={{
+                          fontSize: '15px',
+                          fontWeight: 800,
+                          color: '#ffffff',
+                          whiteSpace: 'nowrap',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                        }}
+                      >
+                        {selectedSong ? selectedSong.trackName : 'No Song Selected'}
+                      </span>
+                      <span
+                        style={{
+                          fontSize: '11px',
+                          fontWeight: 700,
+                          padding: '2px 8px',
+                          borderRadius: '999px',
+                          background: 'rgba(139, 92, 246, 0.15)',
+                          border: '1px solid rgba(139, 92, 246, 0.3)',
+                          color: '#c084fc',
+                          flexShrink: 0,
+                          whiteSpace: 'nowrap',
+                        }}
+                      >
+                        {lyricSlides.length} Slides
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        fontSize: '11px',
+                        color: '#94a3b8',
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis',
+                      }}
+                    >
+                      {selectedSong?.artistName || 'Worship Leader / Church'} •{' '}
+                      {selectedSong?.isLocal ? 'Local Library' : 'Online LRCLIB'}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Right Controls: Save to Bank, Edit Lyrics, Typography, Navigation & Go Live */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                  {selectedSong && (
+                    <>
+                      {/* Save Found Song to Song Bank / In Bank status */}
+                      {!isSelectedSongSaved ? (
+                        <button
+                          onClick={() => handleSaveSongToLibrary(selectedSong)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '6px',
+                            padding: '7px 13px',
+                            borderRadius: '8px',
+                            background: 'rgba(16, 185, 129, 0.18)',
+                            border: '1.5px solid rgba(16, 185, 129, 0.45)',
+                            color: '#34d399',
+                            fontSize: '12px',
+                            fontWeight: 800,
+                            cursor: 'pointer',
+                            boxShadow: '0 0 14px rgba(16, 185, 129, 0.25)',
+                          }}
+                          title="Save this found song to your church Song Bank"
+                        >
+                          <Bookmark size={14} />
+                          <span>Save to Song Bank</span>
+                        </button>
+                      ) : (
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '5px',
+                            padding: '6px 11px',
+                            borderRadius: '8px',
+                            background: 'rgba(16, 185, 129, 0.12)',
+                            border: '1px solid rgba(16, 185, 129, 0.3)',
+                            color: '#34d399',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                          }}
+                          title="Saved in your church Song Bank"
+                        >
+                          <Check size={13} />
+                          <span>In Song Bank</span>
+                        </div>
+                      )}
+
+                      {/* Edit Lyrics / Song Button */}
+                      <button
+                        onClick={() => handleOpenEditSong(selectedSong)}
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '5px',
+                          padding: '7px 12px',
+                          borderRadius: '8px',
+                          background: 'rgba(139, 92, 246, 0.15)',
+                          border: '1px solid rgba(139, 92, 246, 0.35)',
+                          color: '#c084fc',
+                          fontSize: '12px',
+                          fontWeight: 700,
+                          cursor: 'pointer',
+                        }}
+                        title="Edit lyrics, adjust stanzas, or customize this song"
+                      >
+                        <Edit size={14} />
+                        <span>Edit Lyrics</span>
+                      </button>
+                    </>
+                  )}
+
+                  {/* Typography styling modal launcher */}
+                  <button
+                    onClick={() => setShowTypographyModal(true)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '5px',
+                      padding: '7px 11px',
+                      borderRadius: '8px',
+                      background: 'rgba(255, 255, 255, 0.06)',
+                      border: '1px solid rgba(255, 255, 255, 0.12)',
+                      color: '#e2e8f0',
+                      fontSize: '12px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                    title="Change presentation font family and size"
+                  >
+                    <Type size={14} color="#a78bfa" />
+                    <span>Font</span>
+                  </button>
+
+                  {/* Prev / Next slide navigation buttons */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '3px' }}>
+                    <button
+                      onClick={handlePrevSlide}
+                      disabled={selectedLyricSlideIndex <= 0}
+                      style={{
+                        padding: '6px 8px',
+                        borderRadius: '6px',
+                        background: 'rgba(255, 255, 255, 0.06)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        color: selectedLyricSlideIndex <= 0 ? '#475569' : '#e2e8f0',
+                        cursor: selectedLyricSlideIndex <= 0 ? 'not-allowed' : 'pointer',
+                      }}
+                      title="Previous Slide (Left Arrow)"
+                    >
+                      <ChevronLeft size={16} />
+                    </button>
+                    <button
+                      onClick={handleNextSlide}
+                      disabled={selectedLyricSlideIndex >= lyricSlides.length - 1}
+                      style={{
+                        padding: '6px 8px',
+                        borderRadius: '6px',
+                        background: 'rgba(255, 255, 255, 0.06)',
+                        border: '1px solid rgba(255, 255, 255, 0.1)',
+                        color: selectedLyricSlideIndex >= lyricSlides.length - 1 ? '#475569' : '#e2e8f0',
+                        cursor: selectedLyricSlideIndex >= lyricSlides.length - 1 ? 'not-allowed' : 'pointer',
+                      }}
+                      title="Next Slide (Right Arrow / Space)"
+                    >
+                      <ChevronRight size={16} />
+                    </button>
+                  </div>
+
+                  {/* GO LIVE BUTTON */}
+                  <button
+                    onClick={() => handleGoLive()}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '7px',
+                      padding: '8px 16px',
+                      borderRadius: '8px',
+                      background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                      color: '#ffffff',
+                      fontWeight: 900,
+                      fontSize: '12px',
+                      border: 'none',
+                      cursor: 'pointer',
+                      boxShadow: '0 0 18px rgba(239, 68, 68, 0.45)',
+                      letterSpacing: '0.04em',
+                    }}
+                    title="Send selected lyric slide directly to Live Display (Enter / F5)"
+                  >
+                    <Radio size={15} />
+                    <span>GO LIVE</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Sub-bar: Slide counter & quick screen blanking */}
+              <div
+                style={{
+                  padding: '6px 20px',
+                  background: 'rgba(0, 0, 0, 0.35)',
+                  borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  fontSize: '11px',
+                }}
+              >
+                <div style={{ color: '#94a3b8', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <span>
+                    Selected: <strong>Slide {selectedLyricSlideIndex + 1}</strong> of {lyricSlides.length}
+                  </span>
+                  <span style={{ color: '#475569' }}>•</span>
+                  <span style={{ color: '#64748b' }}>Double-click slide to project immediately</span>
+                </div>
+
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  {/* Split mode in subbar */}
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '2px',
+                      background: 'rgba(0, 0, 0, 0.4)',
+                      padding: '2px 3px',
+                      borderRadius: '6px',
+                      border: '1px solid rgba(255, 255, 255, 0.08)',
+                    }}
+                  >
+                    <span style={{ fontSize: '9px', fontWeight: 800, color: '#64748b', padding: '0 4px' }}>SPLIT:</span>
+                    {(
+                      [
+                        { id: 'smart', label: 'Smart (2-3)' },
+                        { id: 'stanzas', label: 'Stanzas' },
+                        { id: 'lines', label: '1 Line' },
+                      ] as const
+                    ).map((m) => (
+                      <button
+                        key={m.id}
+                        onClick={() => setLyricsSplitMode(m.id)}
+                        style={{
+                          padding: '2px 6px',
+                          borderRadius: '4px',
+                          fontSize: '10px',
+                          fontWeight: 700,
+                          border: 'none',
+                          cursor: 'pointer',
+                          background: lyricsSplitMode === m.id ? '#8b5cf6' : 'transparent',
+                          color: lyricsSplitMode === m.id ? '#ffffff' : '#94a3b8',
+                          transition: 'all 0.12s',
+                        }}
+                      >
+                        {m.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={() => onUpdateLiveState({ isClearText: !state.liveState.isClearText })}
+                    style={{
+                      padding: '3px 8px',
+                      borderRadius: '4px',
+                      background: state.liveState.isClearText ? 'rgba(239, 68, 68, 0.25)' : 'rgba(255, 255, 255, 0.05)',
+                      border: state.liveState.isClearText ? '1px solid #ef4444' : '1px solid rgba(255, 255, 255, 0.08)',
+                      color: state.liveState.isClearText ? '#ef4444' : '#cbd5e1',
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {state.liveState.isClearText ? 'TEXT HIDDEN' : 'Clear Text'}
+                  </button>
+                  <button
+                    onClick={() => onUpdateLiveState({ isBlackout: !state.liveState.isBlackout })}
+                    style={{
+                      padding: '3px 8px',
+                      borderRadius: '4px',
+                      background: state.liveState.isBlackout ? 'rgba(239, 68, 68, 0.25)' : 'rgba(255, 255, 255, 0.05)',
+                      border: state.liveState.isBlackout ? '1px solid #ef4444' : '1px solid rgba(255, 255, 255, 0.08)',
+                      color: state.liveState.isBlackout ? '#ef4444' : '#cbd5e1',
+                      fontSize: '10px',
+                      fontWeight: 700,
+                      cursor: 'pointer',
+                    }}
+                  >
+                    {state.liveState.isBlackout ? 'BLACKOUT ON' : 'Blackout'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Slide Cards Grid */}
+              <div
+                style={{
+                  flex: 1,
+                  overflowY: 'auto',
+                  padding: '20px',
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
+                  gap: '14px',
+                  alignContent: 'start',
+                }}
+              >
+                {lyricSlides.length === 0 ? (
+                  <div
+                    style={{
+                      gridColumn: '1 / -1',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      minHeight: '260px',
+                      color: '#64748b',
+                      textAlign: 'center',
+                    }}
+                  >
+                    <Music size={42} color="#334155" style={{ marginBottom: '12px' }} />
+                    <div style={{ fontSize: '14px', fontWeight: 700, color: '#94a3b8', marginBottom: '6px' }}>
+                      No Lyric Slides Available
+                    </div>
+                    <div style={{ fontSize: '12px', maxWidth: '320px', marginBottom: '14px', lineHeight: 1.5 }}>
+                      Select a song from the library on the left, search online, or paste your lyrics manually to generate presentation slides.
+                    </div>
+                    <button
+                      onClick={handleOpenAddSong}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        padding: '8px 18px',
+                        borderRadius: '8px',
+                        background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)',
+                        border: 'none',
+                        color: '#ffffff',
+                        fontSize: '12px',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        boxShadow: '0 0 16px rgba(139, 92, 246, 0.4)',
+                      }}
+                      title="Paste lyrics and add a song manually"
+                    >
+                      <Plus size={14} />
+                      <span>+ Add Song to Song Bank</span>
+                    </button>
+                  </div>
+                ) : (
+                  lyricSlides.map((slideText, idx) => {
+                    const isSelected = selectedLyricSlideIndex === idx;
+                    const isLive =
+                      state.lines[state.cur] === slideText &&
+                      state.category === 'song' &&
+                      !state.liveState.isClearText &&
+                      !state.liveState.isBlackout;
+
+                    return (
+                      <div
+                        key={idx}
+                        onClick={() => setSelectedLyricSlideIndex(idx)}
+                        onDoubleClick={() => {
+                          setSelectedLyricSlideIndex(idx);
+                          handleGoLive(idx);
+                        }}
+                        style={{
+                          background: isLive
+                            ? 'radial-gradient(ellipse at top left, rgba(239, 68, 68, 0.22) 0%, rgba(15, 23, 42, 0.95) 100%)'
+                            : isSelected
+                            ? 'radial-gradient(ellipse at top left, rgba(139, 92, 246, 0.25) 0%, rgba(15, 23, 42, 0.9) 100%)'
+                            : 'rgba(15, 23, 42, 0.75)',
+                          border: isLive
+                            ? '2px solid #ef4444'
+                            : isSelected
+                            ? '2px solid #a78bfa'
+                            : '1px solid rgba(255, 255, 255, 0.08)',
+                          borderRadius: '12px',
+                          padding: '14px 16px',
+                          cursor: 'pointer',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          justifyContent: 'space-between',
+                          minHeight: '140px',
+                          boxShadow: isLive
+                            ? '0 0 25px rgba(239, 68, 68, 0.4), inset 0 0 20px rgba(239, 68, 68, 0.1)'
+                            : isSelected
+                            ? '0 0 20px rgba(139, 92, 246, 0.3)'
+                            : '0 4px 12px rgba(0, 0, 0, 0.3)',
+                          transition: 'all 0.15s ease',
+                          position: 'relative',
+                        }}
+                      >
+                        {/* Slide Card Header */}
+                        <div
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            marginBottom: '10px',
+                            paddingBottom: '8px',
+                            borderBottom: '1px solid rgba(255, 255, 255, 0.06)',
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <span
+                              style={{
+                                fontSize: '11px',
+                                fontWeight: 900,
+                                color: isLive ? '#f87171' : isSelected ? '#c084fc' : '#94a3b8',
+                                letterSpacing: '0.04em',
+                              }}
+                            >
+                              SLIDE #{idx + 1}
+                            </span>
+                          </div>
+
+                          {isLive ? (
+                            <span
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                background: '#ef4444',
+                                color: '#ffffff',
+                                fontSize: '10px',
+                                fontWeight: 900,
+                                padding: '2px 7px',
+                                borderRadius: '4px',
+                                letterSpacing: '0.04em',
+                                boxShadow: '0 0 10px rgba(239, 68, 68, 0.8)',
+                              }}
+                            >
+                              <Radio size={10} /> LIVE ON AIR
+                            </span>
+                          ) : isSelected ? (
+                            <span
+                              style={{
+                                fontSize: '10px',
+                                fontWeight: 800,
+                                color: '#a78bfa',
+                                background: 'rgba(139, 92, 246, 0.15)',
+                                padding: '2px 6px',
+                                borderRadius: '4px',
+                              }}
+                            >
+                              SELECTED
+                            </span>
+                          ) : null}
+                        </div>
+
+                        {/* Slide Lyrics Content */}
+                        <div
+                          style={{
+                            fontFamily: state.theme.fontFamily || 'Montserrat, sans-serif',
+                            fontSize: '13px',
+                            fontWeight: 600,
+                            lineHeight: 1.5,
+                            color: '#ffffff',
+                            whiteSpace: 'pre-line',
+                            overflow: 'hidden',
+                            display: '-webkit-box',
+                            WebkitLineClamp: 5,
+                            WebkitBoxOrient: 'vertical',
+                            textShadow: '0 1px 3px rgba(0, 0, 0, 0.8)',
+                          }}
+                        >
+                          {slideText}
+                        </div>
+
+                        {/* Slide Card Footer */}
+                        <div
+                          style={{
+                            marginTop: '12px',
+                            paddingTop: '8px',
+                            borderTop: '1px solid rgba(255, 255, 255, 0.05)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                          }}
+                        >
+                          <span style={{ fontSize: '10px', color: '#64748b' }}>
+                            Double-click to project
+                          </span>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedLyricSlideIndex(idx);
+                              handleGoLive(idx);
+                            }}
+                            style={{
+                              padding: '2px 7px',
+                              borderRadius: '4px',
+                              background: isLive ? 'rgba(239, 68, 68, 0.2)' : 'rgba(255, 255, 255, 0.06)',
+                              border: isLive ? '1px solid #ef4444' : '1px solid rgba(255, 255, 255, 0.1)',
+                              color: isLive ? '#f87171' : '#cbd5e1',
+                              fontSize: '9px',
+                              fontWeight: 700,
+                              cursor: 'pointer',
+                            }}
+                          >
+                            {isLive ? 'On Screen' : 'Project Now'}
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
+            {/* PANEL 1: BOOKS (66) */}
         <div
           style={{
             width: '240px',
@@ -2395,6 +4313,8 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
             })}
           </div>
         </div>
+      </>
+    )}
 
         {/* PANEL 5: LIVE DISPLAY MONITOR (Mini Preview of DisplayView) */}
         <div
@@ -2574,7 +4494,7 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                     overflow: 'hidden',
                   }}
                 >
-                  {state.lines[state.cur] || generatedSlides[selectedSlideIndex] || 'No scripture active'}
+                  {state.lines[state.cur] || (activeTab === 'lyrics' ? lyricSlides[selectedLyricSlideIndex] : generatedSlides[selectedSlideIndex]) || 'No content active'}
                 </div>
               )
             )}
@@ -2590,8 +4510,8 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                   paddingTop: '4px',
                 }}
               >
-                <span style={{ fontSize: '9px', fontWeight: 800, color: '#38bdf8' }}>
-                  {state.title || scriptureResult?.reference}
+                <span style={{ fontSize: '9px', fontWeight: 800, color: activeTab === 'lyrics' ? '#c084fc' : '#38bdf8' }}>
+                  {state.title || (activeTab === 'lyrics' ? (selectedSong?.trackName || 'Worship Lyrics') : (scriptureResult?.reference || 'Scripture'))}
                 </span>
                 <span style={{ fontSize: '8px', color: '#64748b', fontWeight: 700 }}>
                   DISPLAYVIEW LIVE
@@ -3153,6 +5073,18 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
           </div>
         </div>
       )}
+
+      {/* ============================================================= */}
+      {/* SONG BANK MANUAL LYRIC ADD & EDIT MODAL                        */}
+      {/* ============================================================= */}
+      <SongBankEditorModal
+        isOpen={isSongEditorOpen}
+        onClose={() => setIsSongEditorOpen(false)}
+        initialSong={editingSong}
+        onSave={handleSaveSongFromEditor}
+        onSaveAndGoLive={handleSaveAndGoLiveFromEditor}
+        onSaveAndAddToSchedule={handleSaveAndAddToScheduleFromEditor}
+      />
     </div>
   );
 };

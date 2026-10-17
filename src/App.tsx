@@ -130,6 +130,7 @@ export const App: React.FC = () => {
         setTimerPrompt={setTimerPrompt}
         onUpdateTheme={updateTheme}
         onSaveLibraryItem={saveLibraryItem}
+        onDeleteLibraryItem={deleteLibraryItem}
         onAddToSchedule={handleAddToSchedule}
       />
     );

@@ -11,11 +11,15 @@ import {
   BookCheck, 
   ChevronRight,
   HardDrive,
-  CheckCheck
+  CheckCheck,
+  Bookmark,
+  Edit,
+  Plus
 } from 'lucide-react';
 import { LibraryItem } from '../types';
 import { parseLyricsToSlides } from '../utils/lyricParser';
 import { getLyricSuggestions, LyricSuggestion } from '../data/popularWorshipSongs';
+import { SongBankEditorModal } from './SongBankEditorModal';
 
 interface OnlineSongResult {
   id: string;
@@ -55,6 +59,8 @@ export const OnlineLyricsSearchModal: React.FC<OnlineLyricsSearchModalProps> = (
   const [lyricsSavedFeedback, setLyricsSavedFeedback] = useState<string | null>(null);
   const [lyricsLiveFeedback, setLyricsLiveFeedback] = useState(false);
   const [lyricsScheduleFeedback, setLyricsScheduleFeedback] = useState(false);
+  const [isSongEditorOpen, setIsSongEditorOpen] = useState(false);
+  const [editingSong, setEditingSong] = useState<Partial<LibraryItem> | Partial<OnlineSongResult> | null>(null);
 
   // Lyric Autocomplete State
   const [showLyricSuggestions, setShowLyricSuggestions] = useState(false);
@@ -316,6 +322,27 @@ export const OnlineLyricsSearchModal: React.FC<OnlineLyricsSearchModalProps> = (
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <button
+              className="btn"
+              style={{
+                fontSize: '12px',
+                background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.25) 0%, rgba(99, 102, 241, 0.18) 100%)',
+                borderColor: 'rgba(139, 92, 246, 0.4)',
+                color: '#c084fc',
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px',
+              }}
+              onClick={() => {
+                setEditingSong(null);
+                setIsSongEditorOpen(true);
+              }}
+              title="Paste or type lyrics manually to build your song bank"
+            >
+              <Plus size={14} /> + Manual Add Lyric
+            </button>
+
             <button className="btn btn-icon" onClick={onClose} style={{ background: 'transparent' }} title="Close (Esc)">
               <X size={18} />
             </button>
@@ -727,10 +754,57 @@ export const OnlineLyricsSearchModal: React.FC<OnlineLyricsSearchModalProps> = (
                   alignItems: 'center'
                 }}>
                   <div style={{ fontSize: '11px', color: '#64748b' }}>
-                    {selectedSong.isLocal ? 'Using saved version in library' : 'Saved locally in store.json'}
+                    {selectedSong.isLocal ? 'Saved in local church Song Bank' : 'Available online • Click Save to Bank'}
                   </div>
 
                   <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      className="btn"
+                      style={{ fontSize: '12px', padding: '7px 12px' }}
+                      onClick={() => {
+                        setEditingSong({
+                          id: selectedSong.localItem?.id,
+                          title: selectedSong.trackName,
+                          author: selectedSong.artistName,
+                          category: (selectedSong.localItem?.category as any) || 'song',
+                          content: selectedSong.plainLyrics,
+                          plainLyrics: selectedSong.plainLyrics,
+                          splitMode: lyricsSplitMode,
+                        });
+                        setIsSongEditorOpen(true);
+                      }}
+                      title="Edit lyrics and adjust slide splitting"
+                    >
+                      <Edit size={13} /> Edit Lyrics
+                    </button>
+
+                    {!selectedSong.isLocal && (
+                      <button
+                        className="btn"
+                        style={{
+                          fontSize: '12px',
+                          padding: '7px 12px',
+                          background: 'rgba(16, 185, 129, 0.15)',
+                          color: '#34d399',
+                          borderColor: 'rgba(16, 185, 129, 0.35)',
+                        }}
+                        onClick={() => {
+                          const item = getLibraryItemFromSong(selectedSong, lyricsSplitMode);
+                          onSaveLibraryItem(item);
+                          setLyricsSavedFeedback(`"${selectedSong.trackName}" saved to Song Bank!`);
+                          setSelectedSong({
+                            ...selectedSong,
+                            isLocal: true,
+                            localItem: item,
+                          });
+                          setTimeout(() => setLyricsSavedFeedback(null), 3000);
+                        }}
+                        title="Save found lyric to your church Song Bank"
+                      >
+                        <Bookmark size={13} /> Save to Bank
+                      </button>
+                    )}
+
                     <button
                       className="btn"
                       style={{ fontSize: '12px', padding: '7px 14px', background: lyricsScheduleFeedback ? '#10b981' : undefined }}
@@ -755,6 +829,26 @@ export const OnlineLyricsSearchModal: React.FC<OnlineLyricsSearchModalProps> = (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: '#64748b', fontSize: '13px', padding: '2rem', textAlign: 'center', gap: '8px' }}>
                 <Music size={32} style={{ opacity: 0.3 }} />
                 <span>Select any song from the left search list to preview its slide layout and load it live.</span>
+                <button
+                  className="btn"
+                  style={{
+                    marginTop: '8px',
+                    fontSize: '12px',
+                    background: 'linear-gradient(135deg, rgba(139, 92, 246, 0.25) 0%, rgba(99, 102, 241, 0.18) 100%)',
+                    borderColor: 'rgba(139, 92, 246, 0.4)',
+                    color: '#c084fc',
+                    fontWeight: 700,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '5px',
+                  }}
+                  onClick={() => {
+                    setEditingSong(null);
+                    setIsSongEditorOpen(true);
+                  }}
+                >
+                  <Plus size={13} /> Paste / Add Lyric Manually
+                </button>
               </div>
             )}
           </div>
@@ -762,6 +856,37 @@ export const OnlineLyricsSearchModal: React.FC<OnlineLyricsSearchModalProps> = (
         </div>
 
       </div>
+
+      {/* Song Bank Manual Lyric Editor Modal */}
+      <SongBankEditorModal
+        isOpen={isSongEditorOpen}
+        onClose={() => setIsSongEditorOpen(false)}
+        initialSong={editingSong}
+        onSave={(item) => {
+          onSaveLibraryItem(item);
+          const onlineFormat: OnlineSongResult = {
+            id: item.id,
+            trackName: item.title,
+            artistName: item.author || 'Local Church Library',
+            snippet: item.lines?.slice(0, 2).join(' • ') || '',
+            plainLyrics: item.content || item.lines?.join('\n') || '',
+            isLocal: true,
+            localItem: item,
+          };
+          setSelectedSong(onlineFormat);
+          setLyricsSavedFeedback(`"${item.title}" saved to Song Bank!`);
+          setTimeout(() => setLyricsSavedFeedback(null), 3000);
+        }}
+        onSaveAndGoLive={(item) => {
+          onSaveLibraryItem(item);
+          onGoLiveWithItem(item);
+          onClose();
+        }}
+        onSaveAndAddToSchedule={(item) => {
+          onSaveLibraryItem(item);
+          onAddToSchedule(item);
+        }}
+      />
     </div>
   );
 };

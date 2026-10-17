@@ -380,10 +380,24 @@ export function useWorshipSync() {
   }, [send]);
 
   const saveLibraryItem = useCallback((item: LibraryItem) => {
+    setState((prev) => {
+      const library = [...(prev.library || [])];
+      const idx = library.findIndex((i) => i.id === item.id);
+      if (idx >= 0) {
+        library[idx] = item;
+      } else {
+        library.unshift(item);
+      }
+      return { ...prev, library };
+    });
     send({ type: 'saveLibraryItem', item });
   }, [send]);
 
   const deleteLibraryItem = useCallback((id: string) => {
+    setState((prev) => ({
+      ...prev,
+      library: (prev.library || []).filter((i) => i.id !== id),
+    }));
     send({ type: 'deleteLibraryItem', id });
   }, [send]);
 

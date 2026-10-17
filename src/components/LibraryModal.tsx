@@ -15,6 +15,7 @@ import {
   Globe
 } from 'lucide-react';
 import { LibraryItem } from '../types';
+import { parseLyricsToSlides } from '../utils/lyricParser';
 
 interface LibraryModalProps {
   isOpen: boolean;
@@ -42,7 +43,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [activeCategory, setActiveCategory] = useState<string>('all');
   const [editingItem, setEditingItem] = useState<Partial<LibraryItem> | null>(null);
-  const [splitMode, setSplitMode] = useState<'stanzas' | 'lines'>('lines');
+  const [splitMode, setSplitMode] = useState<'smart' | 'stanzas' | 'lines'>('smart');
   const [addedFeedbackId, setAddedFeedbackId] = useState<string | null>(null);
 
   if (!isOpen) return null;
@@ -65,6 +66,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
       content: '',
       lines: [],
     });
+    setSplitMode('smart');
   };
 
   const handleStartEdit = (item: LibraryItem) => {
@@ -77,20 +79,7 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
       return;
     }
 
-    let parsedLines: string[] = [];
-    if (splitMode === 'stanzas') {
-      // Split by double newline / paragraph
-      parsedLines = editingItem.content
-        .split(/\n\s*\n/)
-        .map(s => s.trim())
-        .filter(Boolean);
-    } else {
-      // Split line by line
-      parsedLines = editingItem.content
-        .split('\n')
-        .map(s => s.trim())
-        .filter(Boolean);
-    }
+    const parsedLines = parseLyricsToSlides(editingItem.content, splitMode);
 
     if (parsedLines.length === 0) {
       alert('No slide content detected.');
@@ -359,22 +348,55 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
                     <div style={{ display: 'flex', gap: '4px' }}>
                       <button
                         type="button"
-                        className={`btn ${splitMode === 'lines' ? 'btn-primary' : ''}`}
+                        className={`btn ${splitMode === 'smart' ? 'btn-primary' : ''}`}
                         style={{ fontSize: '10px', padding: '2px 6px' }}
-                        onClick={() => setSplitMode('lines')}
+                        onClick={() => setSplitMode('smart')}
+                        title="Smart 2-3 lines per slide"
                       >
-                        1 Line/Slide
+                        Smart
                       </button>
                       <button
                         type="button"
                         className={`btn ${splitMode === 'stanzas' ? 'btn-primary' : ''}`}
                         style={{ fontSize: '10px', padding: '2px 6px' }}
                         onClick={() => setSplitMode('stanzas')}
+                        title="Split by blank lines"
                       >
-                        Stanzas (Paragraphs)
+                        Stanzas
+                      </button>
+                      <button
+                        type="button"
+                        className={`btn ${splitMode === 'lines' ? 'btn-primary' : ''}`}
+                        style={{ fontSize: '10px', padding: '2px 6px' }}
+                        onClick={() => setSplitMode('lines')}
+                        title="Single line per slide"
+                      >
+                        1 Line
                       </button>
                     </div>
                   </div>
+
+                  {/* Section tag inserters for songs */}
+                  {editingItem.category === 'song' || editingItem.category === 'hymn' ? (
+                    <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap', marginBottom: '4px' }}>
+                      {['Verse 1', 'Verse 2', 'Chorus', 'Bridge'].map(tag => (
+                        <button
+                          key={tag}
+                          type="button"
+                          className="btn"
+                          style={{ fontSize: '9px', padding: '1px 5px', background: 'rgba(139, 92, 246, 0.15)', color: '#c084fc', border: '1px solid rgba(139, 92, 246, 0.3)' }}
+                          onClick={() => {
+                            const cur = editingItem.content || '';
+                            const prefix = cur.length === 0 || cur.endsWith('\n\n') ? '' : cur.endsWith('\n') ? '\n' : '\n\n';
+                            setEditingItem({ ...editingItem, content: `${cur}${prefix}[${tag}]\n` });
+                          }}
+                        >
+                          + [{tag}]
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+
                   <textarea
                     className="form-textarea"
                     style={{ flex: 1, minHeight: '160px', fontSize: '12px', lineHeight: '1.6' }}
@@ -383,7 +405,9 @@ export const LibraryModal: React.FC<LibraryModalProps> = ({
                     placeholder="Paste lyrics or scripture verses here..."
                   />
                   <div style={{ fontSize: '10px', color: '#64748b', marginTop: '4px' }}>
-                    {splitMode === 'lines'
+                    {splitMode === 'smart'
+                      ? '• Smart Split: Groups 2-3 lines per slide, respecting stanzas.'
+                      : splitMode === 'lines'
                       ? '• Each individual line will become one presentation slide.'
                       : '• Paragraphs separated by blank lines will become slides.'}
                   </div>
