@@ -19,7 +19,7 @@ import {
 import { LibraryItem } from '../types';
 import { parseLyricsToSlides } from '../utils/lyricParser';
 import { getLyricSuggestions, LyricSuggestion } from '../data/popularWorshipSongs';
-import { SongBankEditorModal } from './SongBankEditorModal';
+import { SongBankEditorModal, SongBankEditorItem } from './SongBankEditorModal';
 
 interface OnlineSongResult {
   id: string;
@@ -60,7 +60,7 @@ export const OnlineLyricsSearchModal: React.FC<OnlineLyricsSearchModalProps> = (
   const [lyricsLiveFeedback, setLyricsLiveFeedback] = useState(false);
   const [lyricsScheduleFeedback, setLyricsScheduleFeedback] = useState(false);
   const [isSongEditorOpen, setIsSongEditorOpen] = useState(false);
-  const [editingSong, setEditingSong] = useState<Partial<LibraryItem> | Partial<OnlineSongResult> | null>(null);
+  const [editingSong, setEditingSong] = useState<SongBankEditorItem | null>(null);
 
   // Lyric Autocomplete State
   const [showLyricSuggestions, setShowLyricSuggestions] = useState(false);

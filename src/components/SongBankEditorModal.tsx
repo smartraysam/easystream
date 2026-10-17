@@ -17,20 +17,22 @@ import {
 import { LibraryItem } from '../types';
 import { parseLyricsToSlides } from '../utils/lyricParser';
 
+export interface SongBankEditorItem {
+  id?: string;
+  title?: string;
+  author?: string;
+  category?: 'song' | 'hymn' | 'custom' | string;
+  content?: string;
+  plainLyrics?: string;
+  trackName?: string;
+  artistName?: string;
+  splitMode?: 'smart' | 'stanzas' | 'lines';
+}
+
 export interface SongBankEditorModalProps {
   isOpen: boolean;
   onClose: () => void;
-  initialSong?: {
-    id?: string;
-    title?: string;
-    author?: string;
-    category?: 'song' | 'hymn' | 'custom' | string;
-    content?: string;
-    plainLyrics?: string;
-    trackName?: string;
-    artistName?: string;
-    splitMode?: 'smart' | 'stanzas' | 'lines';
-  } | null;
+  initialSong?: SongBankEditorItem | null;
   onSave: (item: LibraryItem) => void;
   onSaveAndGoLive?: (item: LibraryItem) => void;
   onSaveAndAddToSchedule?: (item: LibraryItem) => void;
