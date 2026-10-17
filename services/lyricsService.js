@@ -165,7 +165,7 @@ export async function extractGeniusLyrics(url, timeoutMs = 3500) {
  */
 export async function searchGenius(query, maxResults = 8) {
   try {
-    const url = `https://genius.com/api/search/songs?page=1&per_page=${maxResults}&q=${encodeURIComponent(query)}`;
+    const url = `https://genius.com/api/search/multi?per_page=5&q=${encodeURIComponent(query)}`;
     const res = await fetch(url, {
       headers: {
         'User-Agent':
@@ -176,8 +176,23 @@ export async function searchGenius(query, maxResults = 8) {
     if (!res.ok) return [];
     const data = await res.json();
     
-    // Songs hits are in d.response.sections[0].hits
-    const hits = (data.response?.sections?.[0]?.hits || []).slice(0, maxResults);
+    // Combine hits from top_hit, song, and lyric sections (supports title, artist, AND lyric search!)
+    const rawHits = [];
+    const seenSongIds = new Set();
+
+    for (const section of data.response?.sections || []) {
+      if (section.type === 'top_hit' || section.type === 'song' || section.type === 'lyric') {
+        for (const hit of section.hits || []) {
+          const r = hit.result;
+          if (r && (hit.type === 'song' || r._type === 'song') && !seenSongIds.has(r.id)) {
+            seenSongIds.add(r.id);
+            rawHits.push(hit);
+          }
+        }
+      }
+    }
+
+    const hits = rawHits.slice(0, maxResults);
 
     // Pre-fetch lyrics for top 4 hits in parallel with a 3.5s timeout
     const results = await Promise.all(
@@ -435,20 +450,30 @@ export async function searchMultiTierLyrics(query, options = {}) {
     }
   }
 
-  // Relevance ranking based on query tokens
+  // Relevance ranking based on query tokens (supports both title/artist matches and lyric line matches)
   const queryTerms = q.toLowerCase().split(/\s+/).filter(w => w.length >= 2);
   const scored = deduped.map(item => {
-    let score = 0;
+    let score = 10; // Baseline: item was returned by search provider
     const titleLower = item.trackName.toLowerCase();
     const artistLower = item.artistName.toLowerCase();
+    const lyricsLower = (item.plainLyrics || '').toLowerCase();
+    const snippetLower = (item.snippet || '').toLowerCase();
     const qLower = q.toLowerCase();
     
+    // Exact full query matches in title or artist
     if (titleLower.includes(qLower)) score += 60;
     if (artistLower.includes(qLower)) score += 40;
 
+    // Full query match in lyrics or snippet
+    if (lyricsLower.includes(qLower)) score += 50;
+    if (snippetLower.includes(qLower)) score += 35;
+
+    // Individual word matches
     for (const term of queryTerms) {
-      if (titleLower.includes(term)) score += 20;
-      if (artistLower.includes(term)) score += 12;
+      if (titleLower.includes(term)) score += 15;
+      if (artistLower.includes(term)) score += 10;
+      if (lyricsLower.includes(term)) score += 8;
+      if (snippetLower.includes(term)) score += 6;
     }
 
     if (item.plainLyrics && item.plainLyrics.length > 50) score += 5;
@@ -457,9 +482,7 @@ export async function searchMultiTierLyrics(query, options = {}) {
   });
 
   scored.sort((a, b) => b.score - a.score);
-  // Keep relevant matches; if none scored above 0, keep all deduped
-  const ranked = scored.filter(s => s.score > 0).map(s => s.item);
-  const finalResults = (ranked.length > 0 ? ranked : deduped).slice(0, 10);
+  const finalResults = scored.map(s => s.item).slice(0, 10);
 
   if (finalResults.length > 0) {
     memoryCache[cacheKey] = finalResults;
