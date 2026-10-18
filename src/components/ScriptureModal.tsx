@@ -249,6 +249,9 @@ export const ScriptureModal: React.FC<ScriptureModalProps> = ({
       return;
     }
 
+    // Strip trailing dashes or colons if user pressed Enter on an incomplete range (e.g. "John 3:16-", "John 3:")
+    raw = raw.replace(/[-–—:\s]+$/, "").trim();
+
     // Normalize spaced verse: e.g. "John 3 16" -> "John 3:16", "1 Cor 13 4" -> "1 Cor 13:4"
     raw = raw.replace(
       /^([1-3]?\s*[a-zA-Z\s]+?)\s+(\d+)\s+(\d+)(.*)$/,
@@ -566,7 +569,52 @@ export const ScriptureModal: React.FC<ScriptureModalProps> = ({
                 onChange={(e) => {
                   const val = e.target.value;
 
-                  // 1. Auto-insert colon if user typed space after chapter number (e.g. "John 3 " -> "John 3:")
+                  // 1. Spaced verse with trailing space: e.g. "John 3 16 " -> "John 3:16-"
+                  const spacedVerseTrailingSpace = val.match(
+                    /^([1-3]?\s*[a-zA-Z\s]+?)\s+(\d+)\s+(\d+)\s+$/,
+                  );
+                  if (spacedVerseTrailingSpace) {
+                    const bookCandidate = spacedVerseTrailingSpace[1].trim();
+                    const chapterNum = spacedVerseTrailingSpace[2];
+                    const verseNum = spacedVerseTrailingSpace[3];
+                    const matchedBook = findBestBookMatch(bookCandidate);
+                    const canonicalBook = matchedBook
+                      ? matchedBook.name
+                      : bookCandidate;
+                    updateQueryAndFocusEnd(
+                      `${canonicalBook} ${chapterNum}:${verseNum}-`,
+                    );
+                    return;
+                  }
+
+                  // 2. Spaced verse auto-format without trailing space: e.g. "John 3 16" -> "John 3:16"
+                  const spacedVerseMatch = val.match(
+                    /^([1-3]?\s*[a-zA-Z\s]+?)\s+(\d+)\s+(\d+)$/,
+                  );
+                  if (spacedVerseMatch) {
+                    const bookCandidate = spacedVerseMatch[1].trim();
+                    const chapterNum = spacedVerseMatch[2];
+                    const verseNum = spacedVerseMatch[3];
+                    const matchedBook = findBestBookMatch(bookCandidate);
+                    const canonicalBook = matchedBook
+                      ? matchedBook.name
+                      : bookCandidate;
+                    updateQueryAndFocusEnd(
+                      `${canonicalBook} ${chapterNum}:${verseNum}`,
+                    );
+                    return;
+                  }
+
+                  // 3. Auto-insert "-" if user typed space after verse number (e.g. "John 3:16 " -> "John 3:16-")
+                  const trailingSpaceAfterVerse = val.match(
+                    /^([1-3]?\s*[a-zA-Z\s]+?\s+\d+:\d+)\s+$/,
+                  );
+                  if (trailingSpaceAfterVerse) {
+                    updateQueryAndFocusEnd(`${trailingSpaceAfterVerse[1]}-`);
+                    return;
+                  }
+
+                  // 4. Auto-insert colon if user typed space after chapter number (e.g. "John 3 " -> "John 3:")
                   const trailingSpaceAfterChapter = val.match(
                     /^([1-3]?\s*[a-zA-Z\s]+?)\s+(\d+)\s+$/,
                   );
@@ -581,7 +629,23 @@ export const ScriptureModal: React.FC<ScriptureModalProps> = ({
                     return;
                   }
 
-                  // 2. Auto-normalize book name if colon is typed directly after chapter (e.g. "joh 3:" -> "John 3:")
+                  // 5. Auto-complete book name on trailing space (e.g. "joh " -> "John ", "1cor " -> "1 Corinthians ")
+                  const trailingSpaceAfterBook = val.match(
+                    /^([1-3]?\s*[a-zA-Z]{2,})\s+$/,
+                  );
+                  if (trailingSpaceAfterBook) {
+                    const bookCandidate = trailingSpaceAfterBook[1].trim();
+                    const matchedBook = findBestBookMatch(bookCandidate);
+                    if (
+                      matchedBook &&
+                      matchedBook.name.toLowerCase() !== val.trim().toLowerCase()
+                    ) {
+                      updateQueryAndFocusEnd(`${matchedBook.name} `);
+                      return;
+                    }
+                  }
+
+                  // 6. Auto-normalize book name if colon is typed directly after chapter (e.g. "joh 3:" -> "John 3:")
                   const directColonMatch = val.match(
                     /^([1-3]?\s*[a-zA-Z\s]+?)\s*(\d+):$/,
                   );
@@ -617,20 +681,51 @@ export const ScriptureModal: React.FC<ScriptureModalProps> = ({
                   if (e.key === "Tab" || e.key === " ") {
                     const trimmed = query.trim();
 
-                    // A. Book-only match: e.g. "joh", "1co", "matt" -> complete to full book + trailing space
-                    const bookOnlyMatch = trimmed.match(
-                      /^([1-3]?\s*[a-zA-Z]+)$/,
-                    );
-                    if (bookOnlyMatch) {
-                      const matchedBook = findBestBookMatch(trimmed);
-                      if (matchedBook) {
-                        e.preventDefault();
-                        updateQueryAndFocusEnd(`${matchedBook.name} `);
-                        return;
-                      }
+                    // A. If suggestions list is visible and user navigated to an active item
+                    if (
+                      showSuggestions &&
+                      suggestions.length > 0 &&
+                      activeSuggestionIndex >= 0
+                    ) {
+                      const activeSug = suggestions[activeSuggestionIndex];
+                      e.preventDefault();
+                      handleSelectSuggestion(activeSug);
+                      return;
                     }
 
-                    // B. Book + Chapter match without colon: e.g. "John 3", "joh 3" -> complete book and add ":"
+                    // B. Verse entered with colon (e.g. "John 3:16", "Romans 8:28", "Psalm 23:1")
+                    // -> Auto-insert "-" on Space key so user can type end verse or press Enter
+                    const bookVerseMatch = trimmed.match(
+                      /^([1-3]?\s*[a-zA-Z\s]+?\s+\d+:\d+)$/,
+                    );
+                    if (bookVerseMatch && e.key === " ") {
+                      e.preventDefault();
+                      updateQueryAndFocusEnd(`${trimmed}-`);
+                      return;
+                    }
+
+                    // C. Spaced verse without colon (e.g. "John 3 16", "Gen 1 1")
+                    // -> Auto-format to colon and insert "-" on Space key
+                    const spacedVerseMatch = trimmed.match(
+                      /^([1-3]?\s*[a-zA-Z\s]+?)\s+(\d+)\s+(\d+)$/,
+                    );
+                    if (spacedVerseMatch && e.key === " ") {
+                      e.preventDefault();
+                      const bookPart = spacedVerseMatch[1].trim();
+                      const chapterPart = spacedVerseMatch[2];
+                      const versePart = spacedVerseMatch[3];
+                      const matchedBook = findBestBookMatch(bookPart);
+                      const canonicalBook = matchedBook
+                        ? matchedBook.name
+                        : bookPart;
+                      updateQueryAndFocusEnd(
+                        `${canonicalBook} ${chapterPart}:${versePart}-`,
+                      );
+                      return;
+                    }
+
+                    // D. Chapter entered without colon (e.g. "John 3", "Gen 1", "Rom 8", "1 Cor 13")
+                    // -> Autocomplete/normalize book, keep chapter, and auto-insert ":"
                     const bookChapterMatch = trimmed.match(
                       /^([1-3]?\s*[a-zA-Z\s]+?)\s+(\d+)$/,
                     );
@@ -646,18 +741,35 @@ export const ScriptureModal: React.FC<ScriptureModalProps> = ({
                       return;
                     }
 
-                    // C. Suggestion navigation completion with Tab
+                    // E. Book name typing (e.g. "joh", "gen", "1co", "matt", "rom", "psa")
+                    // Do not intercept if user just typed single digit "1", "2", "3" with space
+                    if (e.key === " " && /^[1-3]$/.test(trimmed)) {
+                      // Let space pass through so user can type "1 Cor", "2 Kings", etc.
+                      return;
+                    }
+
+                    // Match book abbreviation or partial name
+                    const bookOnlyMatch = trimmed.match(
+                      /^([1-3]?\s*[a-zA-Z\s]+)$/,
+                    );
+                    if (bookOnlyMatch) {
+                      const matchedBook = findBestBookMatch(trimmed);
+                      if (matchedBook) {
+                        e.preventDefault();
+                        updateQueryAndFocusEnd(`${matchedBook.name} `);
+                        return;
+                      }
+                    }
+
+                    // F. Suggestion navigation completion with Tab
                     if (
                       e.key === "Tab" &&
                       showSuggestions &&
                       suggestions.length > 0
                     ) {
                       e.preventDefault();
-                      const targetSug =
-                        activeSuggestionIndex >= 0
-                          ? suggestions[activeSuggestionIndex]
-                          : suggestions[0];
-                      handleSelectSuggestion(targetSug);
+                      const topSug = suggestions[0];
+                      handleSelectSuggestion(topSug);
                       return;
                     }
                   }

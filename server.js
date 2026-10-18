@@ -849,11 +849,27 @@ for (const b of BIBLE_BOOKS) {
 function findBibleBook(str) {
   if (!str) return null;
   const s = str.trim().toLowerCase().replace(/\s+/g, " ");
-  return BIBLE_BOOK_MAP[s] || null;
+  if (BIBLE_BOOK_MAP[s]) return BIBLE_BOOK_MAP[s];
+
+  // Prefix match on canonical name (e.g. "joh" -> "John", "mat" -> "Matthew")
+  const prefixMatch = BIBLE_BOOKS.find((b) => b.name.toLowerCase().startsWith(s));
+  if (prefixMatch) return prefixMatch;
+
+  // Prefix match on alias
+  const aliasMatch = BIBLE_BOOKS.find((b) => b.aliases.some((a) => a.toLowerCase().startsWith(s)));
+  if (aliasMatch) return aliasMatch;
+
+  // Includes match
+  const incMatch = BIBLE_BOOKS.find((b) => b.name.toLowerCase().includes(s));
+  if (incMatch) return incMatch;
+
+  return null;
 }
 
 function parseRefParts(ref) {
-  const m = ref.match(/^([\d]?\s*[a-zA-Z\s]+?)\s*(\d+)(?:[:\s]+(\d+)(?:\s*[-–—]\s*(\d+))?)?$/);
+  if (!ref) return null;
+  const clean = ref.replace(/[-–—:\s]+$/, "").trim();
+  const m = clean.match(/^([\d]?\s*[a-zA-Z\s]+?)\s*(\d+)(?:[:\s]+(\d+)(?:\s*[-–—]\s*(\d+))?)?$/);
   if (!m) return null;
   const bookStr = m[1].trim().toLowerCase().replace(/\s+/g, " ");
   const chapter = parseInt(m[2], 10);
@@ -1225,6 +1241,8 @@ const server = http.createServer((req, res) => {
 
     // Normalize stuck chapter numbers (e.g. "john2:30" -> "john 2:30", "1cor13:4" -> "1cor 13:4")
     cleanRef = cleanRef.replace(/([a-zA-Z]+)(\d+)(?=[:\s])/g, "$1 $2").trim();
+    // Strip trailing dashes or colons if user pressed Enter on an incomplete range (e.g. "John 3:16-", "John 3:")
+    cleanRef = cleanRef.replace(/[-–—:\s]+$/, "").trim();
 
     const refParts = parseRefParts(cleanRef);
 

@@ -680,6 +680,41 @@ export function getBibleSuggestions(
       const bName = matchedBook.name;
 
       if (verseStart !== null) {
+        const baseRef = `${bName} ${chapterNum}:${verseStart}`;
+
+        // If user already typed hyphen (e.g. "John 3:16-"), prioritize range suggestions
+        if (query.includes('-') && verseEnd === null) {
+          suggestions.push({
+            text: `${baseRef}-${verseStart + 1}`,
+            type: 'verse',
+            label: `${baseRef}-${verseStart + 1}`,
+            subLabel: '2 Verses',
+            badge: activeVersion,
+          });
+          suggestions.push({
+            text: `${baseRef}-${verseStart + 2}`,
+            type: 'verse',
+            label: `${baseRef}-${verseStart + 2}`,
+            subLabel: '3 Verses',
+            badge: activeVersion,
+          });
+          suggestions.push({
+            text: `${baseRef}-${verseStart + 4}`,
+            type: 'verse',
+            label: `${baseRef}-${verseStart + 4}`,
+            subLabel: '5 Verses',
+            badge: activeVersion,
+          });
+          suggestions.push({
+            text: baseRef,
+            type: 'verse',
+            label: baseRef,
+            subLabel: `Single Verse (${matchedBook.testament === 'OT' ? 'Old' : 'New'} Testament)`,
+            badge: activeVersion,
+          });
+          return suggestions.slice(0, 6);
+        }
+
         // User typed Book + Chapter + Verse (e.g. "John 3:16" or "John 3:16-18")
         if (verseEnd !== null && verseEnd > verseStart) {
           const rangeRef = `${bName} ${chapterNum}:${verseStart}-${verseEnd}`;
@@ -692,8 +727,6 @@ export function getBibleSuggestions(
           });
         }
 
-        const baseRef = `${bName} ${chapterNum}:${verseStart}`;
-        
         // Exact verse
         suggestions.push({
           text: baseRef,
