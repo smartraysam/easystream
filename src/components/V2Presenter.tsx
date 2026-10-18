@@ -18,6 +18,7 @@ import {
   Minus,
   Plus,
   Sliders,
+  Settings,
   X,
   Check,
   Music,
@@ -27,7 +28,6 @@ import {
   Sparkles,
   Loader2,
   Bookmark,
-  BookmarkCheck,
   Edit,
   Trash2,
 } from "lucide-react";
@@ -51,9 +51,9 @@ import {
   getLyricSuggestions,
   LyricSuggestion,
   POPULAR_WORSHIP_SONGS,
-  PopularWorshipSong,
 } from "../data/popularWorshipSongs";
 import { SongBankEditorModal, SongBankEditorItem } from "./SongBankEditorModal";
+import { FormatSettingsModal } from "./FormatSettingsModal";
 
 export interface OnlineSongResult {
   id: string;
@@ -242,6 +242,7 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
   // Typography & Styling Modal State
   // -------------------------------------------------------------
   const [showTypographyModal, setShowTypographyModal] = useState(false);
+  const [formatModalTab, setFormatModalTab] = useState<'scripture' | 'lyrics' | 'general'>('scripture');
 
   // -------------------------------------------------------------
   // Lyric Projection & Search State (Local + Online)
@@ -251,7 +252,7 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     "all",
   );
   const [lyricsSplitMode, setLyricsSplitMode] = useState<
-    "smart" | "stanzas" | "lines"
+    "smart" | "smart3" | "stanzas" | "lines"
   >("smart");
   const [lyricsLoading, setLyricsLoading] = useState(false);
   const [onlineSongResults, setOnlineSongResults] = useState<
@@ -482,10 +483,16 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     };
   }, [lyricsQuery, lyricsScope, activeTab, localSongMatches.length]);
 
-  const handleSelectSong = async (song: OnlineSongResult) => {
+  const handleSelectSong = async (
+    song: OnlineSongResult,
+    autoGoLive: boolean = true,
+  ) => {
     setSelectedSong(song);
     setSelectedLyricSlideIndex(0);
     setShowLyricSuggestions(false);
+
+    let activeLyrics = song.plainLyrics;
+    let activeSong = song;
 
     // If lyrics are not yet fetched (e.g. lazy loaded), fetch details
     if (!song.plainLyrics || song.plainLyrics.length < 20) {
@@ -496,11 +503,13 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
         );
         const data = await res.json();
         if (data.result?.plainLyrics) {
+          activeLyrics = data.result.plainLyrics;
           const updated = {
             ...song,
             plainLyrics: data.result.plainLyrics,
             snippet: data.result.snippet || song.snippet,
           };
+          activeSong = updated;
           setSelectedSong(updated);
           setOnlineSongResults((prev) =>
             prev.map((s) => (s.id === song.id ? updated : s))
@@ -508,6 +517,24 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
         }
       } catch (err) {
         console.error("Error fetching song lyrics details:", err);
+      }
+    }
+
+    if (autoGoLive && activeLyrics) {
+      const slides = parseLyricsToSlides(activeLyrics, lyricsSplitMode);
+      if (slides.length > 0) {
+        onSetLines(
+          activeSong.trackName,
+          activeSong.artistName || "Worship",
+          slides,
+          "song",
+        );
+        onJumpTo(0);
+        if (state.liveState.isClearText) {
+          onUpdateLiveState({ isClearText: false });
+        }
+        setLiveFeedback(true);
+        setTimeout(() => setLiveFeedback(false), 2000);
       }
     }
   };
@@ -526,8 +553,7 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
         isLocal: true,
         localItem: sug.localItem,
       };
-      setSelectedSong(match);
-      setSelectedLyricSlideIndex(0);
+      handleSelectSong(match, true);
     }
   };
 
@@ -767,7 +793,7 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     if (mode === "full") {
       const refHeader = `${res.reference} (${res.version})`;
       const text = res.verses.map((v) => `${v.verse} ${v.text}`).join("\n\n");
-      return [withRef ? `${text}\n\n${refHeader}` : text];
+      return [withRef ? `${refHeader}\n\n${text}` : text];
     }
 
     if (mode === "double") {
@@ -779,7 +805,7 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
             ? `${baseBookChapter}:${pair[0].verse} (${res.version})`
             : `${baseBookChapter}:${pair[0].verse}-${pair[1].verse} (${res.version})`;
         const text = pair.map((v) => `${v.verse} ${v.text}`).join("\n\n");
-        slides.push(withRef ? `${text}\n\n${pairRef}` : text);
+        slides.push(withRef ? `${pairRef}\n\n${text}` : text);
       }
       return slides;
     }
@@ -791,7 +817,7 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
         res.verses.length === 1
           ? `${res.reference} (${res.version})`
           : `${baseBookChapter}:${v.verse} (${res.version})`;
-      return withRef ? `${cleanVerse}\n\n${verseRef}` : cleanVerse;
+      return withRef ? `${verseRef}\n\n${cleanVerse}` : cleanVerse;
     });
   };
 
@@ -1170,8 +1196,6 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     setIsAlertActive(false);
   };
 
-  const isLiveScriptureCategory = state.category === "scripture";
-
   return (
     <div
       style={{
@@ -1358,31 +1382,6 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
             >
               Blackout
             </button>
-            <button
-              onClick={() => setShowTypographyModal(true)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "5px",
-                padding: "6px 10px",
-                borderRadius: "6px",
-                background: showTypographyModal
-                  ? "rgba(56, 189, 248, 0.25)"
-                  : "rgba(255, 255, 255, 0.06)",
-                color: showTypographyModal ? "#38bdf8" : "#cbd5e1",
-                border: showTypographyModal
-                  ? "1px solid #38bdf8"
-                  : "1px solid rgba(255, 255, 255, 0.1)",
-                fontSize: "11px",
-                fontWeight: 700,
-                cursor: "pointer",
-                transition: "all 0.15s ease",
-              }}
-              title="Edit typography, scripture font family, text size, and timer font size"
-            >
-              <Type size={13} color="#38bdf8" />
-              <span>Typography</span>
-            </button>
           </div>
 
           {/* Quick Display Screen Launcher */}
@@ -1433,6 +1432,42 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
             <Layout size={13} />
             <span>Studio</span>
           </a>
+
+          {/* Subtle separator */}
+          <div style={{ width: "1px", height: "20px", background: "rgba(255, 255, 255, 0.12)", margin: "0 2px" }} />
+
+          {/* General Settings (Scripture & Lyrics Formatting) Button */}
+          <button
+            id="v2-general-settings-button"
+            onClick={() => {
+              setFormatModalTab(activeTab === 'lyrics' ? 'lyrics' : 'scripture');
+              setShowTypographyModal(true);
+            }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              fontSize: "12px",
+              padding: "6px 12px",
+              borderRadius: "8px",
+              background: showTypographyModal
+                ? "rgba(56, 189, 248, 0.25)"
+                : "rgba(255, 255, 255, 0.08)",
+              border: showTypographyModal
+                ? "1.5px solid #38bdf8"
+                : "1px solid rgba(255, 255, 255, 0.18)",
+              color: showTypographyModal ? "#38bdf8" : "#f1f5f9",
+              fontWeight: 700,
+              cursor: "pointer",
+              transition: "all 0.15s ease",
+              boxShadow: showTypographyModal ? "0 0 12px rgba(56, 189, 248, 0.35)" : "none",
+            }}
+            title="General Settings: Scripture & Lyrics formatting, fonts, colors, and layout"
+            aria-label="General Settings"
+          >
+            <Settings size={14} color="#38bdf8" />
+            <span>Settings</span>
+          </button>
         </div>
       </header>
 
@@ -2394,14 +2429,17 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                   cursor: "pointer",
                 }}
               >
+                <option value="lines" style={{ background: "#0f172a" }}>
+                  1 Line / Slide
+                </option>
                 <option value="smart" style={{ background: "#0f172a" }}>
-                  Smart (2-3 Lines)
+                  Smart 2 (2 Lines)
+                </option>
+                <option value="smart3" style={{ background: "#0f172a" }}>
+                  Smart 3 (3 Lines)
                 </option>
                 <option value="stanzas" style={{ background: "#0f172a" }}>
                   Full Stanzas
-                </option>
-                <option value="lines" style={{ background: "#0f172a" }}>
-                  Single Line
                 </option>
               </select>
             </div>
@@ -3383,17 +3421,21 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                           padding: "12px",
                           borderRadius: "10px",
                           cursor: "pointer",
-                          background: isSelected
-                            ? "linear-gradient(135deg, rgba(139, 92, 246, 0.22) 0%, rgba(99, 102, 241, 0.14) 100%)"
-                            : "rgba(255, 255, 255, 0.03)",
-                          border: isSelected
-                            ? "1.5px solid rgba(167, 139, 250, 0.7)"
-                            : isCurrentlyLive
-                              ? "1.5px solid rgba(239, 68, 68, 0.6)"
+                          background: isCurrentlyLive
+                            ? "linear-gradient(135deg, rgba(239, 68, 68, 0.18) 0%, rgba(139, 92, 246, 0.12) 100%)"
+                            : isSelected
+                              ? "linear-gradient(135deg, rgba(139, 92, 246, 0.22) 0%, rgba(99, 102, 241, 0.14) 100%)"
+                              : "rgba(255, 255, 255, 0.03)",
+                          border: isCurrentlyLive
+                            ? "1.5px solid rgba(239, 68, 68, 0.85)"
+                            : isSelected
+                              ? "1.5px solid rgba(167, 139, 250, 0.7)"
                               : "1px solid rgba(255, 255, 255, 0.06)",
-                          boxShadow: isSelected
-                            ? "0 6px 20px rgba(139, 92, 246, 0.25)"
-                            : "none",
+                          boxShadow: isCurrentlyLive
+                            ? "0 4px 20px rgba(239, 68, 68, 0.35)"
+                            : isSelected
+                              ? "0 6px 20px rgba(139, 92, 246, 0.25)"
+                              : "none",
                           transition: "all 0.15s ease",
                           display: "flex",
                           flexDirection: "column",
@@ -3716,32 +3758,6 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                             >
                               <ListPlus size={10} /> Schedule
                             </button>
-
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleSelectSong(song);
-                                setTimeout(() => handleGoLive(0), 50);
-                              }}
-                              style={{
-                                padding: "3px 9px",
-                                borderRadius: "5px",
-                                background:
-                                  "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
-                                border: "none",
-                                color: "#ffffff",
-                                fontSize: "10px",
-                                fontWeight: 800,
-                                cursor: "pointer",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "3px",
-                                boxShadow: "0 0 10px rgba(239, 68, 68, 0.3)",
-                              }}
-                              title="Project slide 1 directly to Live Display"
-                            >
-                              <Radio size={10} /> Go Live
-                            </button>
                           </div>
                         </div>
                       </div>
@@ -3934,9 +3950,12 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                     </>
                   )}
 
-                  {/* Typography styling modal launcher */}
+                  {/* Formatting & typography styling modal launcher */}
                   <button
-                    onClick={() => setShowTypographyModal(true)}
+                    onClick={() => {
+                      setFormatModalTab(activeTab === 'lyrics' ? 'lyrics' : 'scripture');
+                      setShowTypographyModal(true);
+                    }}
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -3950,10 +3969,10 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                       fontWeight: 700,
                       cursor: "pointer",
                     }}
-                    title="Change presentation font family and size"
+                    title="Change presentation formatting, fonts, sizes, and position"
                   >
-                    <Type size={14} color="#a78bfa" />
-                    <span>Font</span>
+                    <Sliders size={14} color="#a78bfa" />
+                    <span>Format</span>
                   </button>
 
                   {/* Prev / Next slide navigation buttons */}
@@ -4074,9 +4093,9 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                     style={{
                       display: "flex",
                       alignItems: "center",
-                      gap: "2px",
+                      gap: "3px",
                       background: "rgba(0, 0, 0, 0.4)",
-                      padding: "2px 3px",
+                      padding: "2px 4px",
                       borderRadius: "6px",
                       border: "1px solid rgba(255, 255, 255, 0.08)",
                     }}
@@ -4093,16 +4112,17 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                     </span>
                     {(
                       [
-                        { id: "smart", label: "Smart (2-3)" },
-                        { id: "stanzas", label: "Stanzas" },
                         { id: "lines", label: "1 Line" },
+                        { id: "smart", label: "Smart 2" },
+                        { id: "smart3", label: "Smart 3" },
+                        { id: "stanzas", label: "Stanzas" },
                       ] as const
                     ).map((m) => (
                       <button
                         key={m.id}
                         onClick={() => setLyricsSplitMode(m.id)}
                         style={{
-                          padding: "2px 6px",
+                          padding: "3px 8px",
                           borderRadius: "4px",
                           fontSize: "10px",
                           fontWeight: 700,
@@ -4121,55 +4141,6 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                       </button>
                     ))}
                   </div>
-
-                  <button
-                    onClick={() =>
-                      onUpdateLiveState({
-                        isClearText: !state.liveState.isClearText,
-                      })
-                    }
-                    style={{
-                      padding: "3px 8px",
-                      borderRadius: "4px",
-                      background: state.liveState.isClearText
-                        ? "rgba(239, 68, 68, 0.25)"
-                        : "rgba(255, 255, 255, 0.05)",
-                      border: state.liveState.isClearText
-                        ? "1px solid #ef4444"
-                        : "1px solid rgba(255, 255, 255, 0.08)",
-                      color: state.liveState.isClearText
-                        ? "#ef4444"
-                        : "#cbd5e1",
-                      fontSize: "10px",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {state.liveState.isClearText ? "TEXT HIDDEN" : "Clear Text"}
-                  </button>
-                  <button
-                    onClick={() =>
-                      onUpdateLiveState({
-                        isBlackout: !state.liveState.isBlackout,
-                      })
-                    }
-                    style={{
-                      padding: "3px 8px",
-                      borderRadius: "4px",
-                      background: state.liveState.isBlackout
-                        ? "rgba(239, 68, 68, 0.25)"
-                        : "rgba(255, 255, 255, 0.05)",
-                      border: state.liveState.isBlackout
-                        ? "1px solid #ef4444"
-                        : "1px solid rgba(255, 255, 255, 0.08)",
-                      color: state.liveState.isBlackout ? "#ef4444" : "#cbd5e1",
-                      fontSize: "10px",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                    }}
-                  >
-                    {state.liveState.isBlackout ? "BLACKOUT ON" : "Blackout"}
-                  </button>
                 </div>
               </div>
 
@@ -4260,7 +4231,19 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                     return (
                       <div
                         key={idx}
-                        onClick={() => setSelectedLyricSlideIndex(idx)}
+                        onClick={() => {
+                          setSelectedLyricSlideIndex(idx);
+                          const isSongLive =
+                            state.category === "song" &&
+                            state.title?.toLowerCase() ===
+                              selectedSong?.trackName.toLowerCase();
+                          if (isSongLive) {
+                            onJumpTo(idx);
+                            if (state.liveState.isClearText) {
+                              onUpdateLiveState({ isClearText: false });
+                            }
+                          }
+                        }}
                         onDoubleClick={() => {
                           setSelectedLyricSlideIndex(idx);
                           handleGoLive(idx);
@@ -5377,30 +5360,115 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                   </div>
                 )
               ) : (
-                /* Live Scripture Text */
+                /* Live Scripture / Worship Slide Text */
                 <div
                   style={{
                     display: "flex",
-                    alignItems: "center",
+                    flexDirection: "column",
+                    alignItems: (state.category === "scripture" || activeTab === "scripture")
+                      ? (state.theme.scripture?.textAlign === 'left' ? 'flex-start' : state.theme.scripture?.textAlign === 'right' ? 'flex-end' : 'center')
+                      : (state.theme.lyrics?.textAlign === 'left' ? 'flex-start' : state.theme.lyrics?.textAlign === 'right' ? 'flex-end' : 'center'),
                     justifyContent: "center",
-                    textAlign: "center",
-                    color: "#ffffff",
-                    fontSize: `${Math.round(13 * Math.max(0.7, Math.min(1.8, (state.theme.fontSize || 44) / 44)))}px`,
-                    fontWeight: 600,
-                    lineHeight: 1.4,
-                    fontFamily:
-                      state.theme.fontFamily || "Montserrat, sans-serif",
-                    textShadow: "0 2px 8px rgba(0, 0, 0, 0.9)",
+                    textAlign: (state.category === "scripture" || activeTab === "scripture")
+                      ? (state.theme.scripture?.textAlign || 'center')
+                      : (state.theme.lyrics?.textAlign || 'center'),
+                    width: "100%",
                     padding: "4px",
-                    whiteSpace: "pre-line",
                     overflow: "hidden",
                   }}
                 >
-                  {state.lines[state.cur] ||
-                    (activeTab === "lyrics"
-                      ? lyricSlides[selectedLyricSlideIndex]
-                      : generatedSlides[selectedSlideIndex]) ||
-                    "No content active"}
+                  {(() => {
+                    const rawText = state.lines[state.cur] ||
+                      (activeTab === "lyrics"
+                        ? lyricSlides[selectedLyricSlideIndex]
+                        : generatedSlides[selectedSlideIndex]) ||
+                      "No content active";
+
+                    const isScripture = (state.category === "scripture" || activeTab === "scripture");
+
+                    if (!isScripture) {
+                      return (
+                        <div
+                          style={{
+                            color: state.theme.lyrics?.bodyFontColor || state.theme.textColor || "#ffffff",
+                            fontSize: `${Math.round(13 * Math.max(0.7, Math.min(1.8, (state.theme.lyrics?.bodyFontSize || 48) / 48)))}px`,
+                            fontWeight: state.theme.lyrics?.bodyFontStyle?.includes('bold') ? 800 : 600,
+                            fontStyle: state.theme.lyrics?.bodyFontStyle?.includes('italic') ? 'italic' : 'normal',
+                            lineHeight: 1.4,
+                            fontFamily: state.theme.lyrics?.bodyFontFamily || state.theme.fontFamily || "Montserrat, sans-serif",
+                            textShadow: "0 2px 8px rgba(0, 0, 0, 0.9)",
+                            whiteSpace: "pre-line",
+                          }}
+                        >
+                          {rawText}
+                        </div>
+                      );
+                    }
+
+                    // Scripture: Parse title and body
+                    const parts = rawText.split(/\n\s*\n/);
+                    let title = state.title || scriptureResult?.reference || "";
+                    let body = rawText;
+
+                    if (parts.length > 1) {
+                      const first = parts[0].trim();
+                      const last = parts[parts.length - 1].trim();
+                      const looksLikeRef = (s: string) =>
+                        /^[1-3]?\s*[A-Za-z\s]+\s+\d+(?::\d+(?:-\d+)?)?(?:\s*\([A-Z0-9\s]+\))?$/i.test(s) ||
+                        /^[1-3]?\s*[A-Za-z\s]+\s*\([A-Z0-9\s]+\)$/i.test(s) ||
+                        s.startsWith('—') ||
+                        s.startsWith('-');
+                      if (looksLikeRef(first) && first.length < 60) {
+                        title = first.replace(/^[—\-]\s*/, '').trim();
+                        body = parts.slice(1).join('\n\n').trim();
+                      } else if (looksLikeRef(last) && last.length < 60) {
+                        title = last.replace(/^[—\-]\s*/, '').trim();
+                        body = parts.slice(0, -1).join('\n\n').trim();
+                      }
+                    }
+                    body = body.replace(/^[“"']+|[”"']+$/g, '').trim();
+                    const showTitle = state.theme.scripture?.showTitle !== false;
+                    const isTitleBottom = state.theme.scripture?.titlePosition === 'bottom';
+                    const titleColor = state.theme.scripture?.titleFontColor || "#38bdf8";
+
+                    const titleEl = showTitle && title ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: isTitleBottom ? '0' : '4px', marginTop: isTitleBottom ? '4px' : '0' }}>
+                        <div style={{ width: '16px', height: '1px', background: 'rgba(255, 255, 255, 0.3)' }} />
+                        <span style={{
+                          fontSize: '9px',
+                          fontWeight: 800,
+                          color: titleColor,
+                          fontFamily: state.theme.scripture?.titleFontFamily || 'Montserrat, sans-serif',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.04em'
+                        }}>
+                          {title}
+                        </span>
+                        <div style={{ width: '16px', height: '1px', background: 'rgba(255, 255, 255, 0.3)' }} />
+                      </div>
+                    ) : null;
+
+                    return (
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
+                        {!isTitleBottom && titleEl}
+                        <div
+                          style={{
+                            color: state.theme.scripture?.bodyFontColor || "#ffffff",
+                            fontSize: `${Math.round(13 * Math.max(0.7, Math.min(1.8, (state.theme.scripture?.bodyFontSize || 52) / 52)))}px`,
+                            fontWeight: state.theme.scripture?.bodyFontStyle?.includes('bold') ? 700 : 500,
+                            fontStyle: state.theme.scripture?.bodyFontStyle?.includes('italic') ? 'italic' : 'normal',
+                            lineHeight: 1.4,
+                            fontFamily: state.theme.scripture?.bodyFontFamily || state.theme.fontFamily || "Montserrat, sans-serif",
+                            textShadow: "0 2px 8px rgba(0, 0, 0, 0.9)",
+                            whiteSpace: "pre-line",
+                          }}
+                        >
+                          “{body}”
+                        </div>
+                        {isTitleBottom && titleEl}
+                      </div>
+                    );
+                  })()}
                 </div>
               ))}
 
@@ -5422,10 +5490,9 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                     color: activeTab === "lyrics" ? "#c084fc" : "#38bdf8",
                   }}
                 >
-                  {state.title ||
-                    (activeTab === "lyrics"
-                      ? selectedSong?.trackName || "Worship Lyrics"
-                      : scriptureResult?.reference || "Scripture")}
+                  {activeTab === "lyrics"
+                    ? (selectedSong?.trackName || "Worship Lyrics")
+                    : "Scripture Live Feed"}
                 </span>
                 <span
                   style={{ fontSize: "8px", color: "#64748b", fontWeight: 700 }}
@@ -5475,703 +5542,20 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
       </main>
 
       {/* ============================================================= */}
-      {/* TYPOGRAPHY & DISPLAY STYLING MODAL                            */}
+      {/* GENERAL FORMATTING SETTINGS MODAL (SCRIPTURE & LYRICS TABS)  */}
       {/* ============================================================= */}
-      {showTypographyModal && (
-        <div
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setShowTypographyModal(false);
-          }}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0, 0, 0, 0.75)",
-            backdropFilter: "blur(8px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 9999,
-            padding: "20px",
-          }}
-        >
-          <div
-            style={{
-              width: "100%",
-              maxWidth: "720px",
-              maxHeight: "90vh",
-              background: "linear-gradient(145deg, #0f172a 0%, #090d16 100%)",
-              border: "1.5px solid rgba(56, 189, 248, 0.3)",
-              borderRadius: "16px",
-              boxShadow:
-                "0 25px 60px -15px rgba(0, 0, 0, 0.9), 0 0 35px rgba(56, 189, 248, 0.15)",
-              display: "flex",
-              flexDirection: "column",
-              overflow: "hidden",
-            }}
-          >
-            {/* Modal Header */}
-            <div
-              style={{
-                padding: "16px 22px",
-                borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                background: "rgba(255, 255, 255, 0.02)",
-              }}
-            >
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "10px" }}
-              >
-                <div
-                  style={{
-                    width: "34px",
-                    height: "34px",
-                    borderRadius: "8px",
-                    background: "rgba(56, 189, 248, 0.15)",
-                    border: "1px solid rgba(56, 189, 248, 0.3)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Type size={18} color="#38bdf8" />
-                </div>
-                <div>
-                  <h3
-                    style={{
-                      margin: 0,
-                      fontSize: "16px",
-                      fontWeight: 800,
-                      color: "#ffffff",
-                    }}
-                  >
-                    Typography & Display Styling
-                  </h3>
-                  <p style={{ margin: 0, fontSize: "11px", color: "#94a3b8" }}>
-                    Adjust font family, scripture text size, and countdown timer
-                    scale across V2 and Live Display
-                  </p>
-                </div>
-              </div>
-
-              <button
-                onClick={() => setShowTypographyModal(false)}
-                style={{
-                  background: "rgba(255, 255, 255, 0.06)",
-                  border: "1px solid rgba(255, 255, 255, 0.1)",
-                  borderRadius: "8px",
-                  width: "32px",
-                  height: "32px",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  color: "#94a3b8",
-                  cursor: "pointer",
-                  transition: "all 0.15s ease",
-                }}
-                title="Close (Esc)"
-              >
-                <X size={16} />
-              </button>
-            </div>
-
-            {/* Modal Scrollable Body */}
-            <div
-              style={{
-                padding: "22px",
-                overflowY: "auto",
-                display: "flex",
-                flexDirection: "column",
-                gap: "20px",
-              }}
-            >
-              {/* 1. FONT FAMILY PICKER */}
-              <div>
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    marginBottom: "8px",
-                  }}
-                >
-                  <label
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: 800,
-                      color: "#e2e8f0",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.05em",
-                    }}
-                  >
-                    1. Scripture Font Family
-                  </label>
-                  <span
-                    style={{
-                      fontSize: "11px",
-                      fontWeight: 700,
-                      color: "#38bdf8",
-                    }}
-                  >
-                    {FONT_FAMILIES.find(
-                      (f) =>
-                        f.value ===
-                        (state.theme.fontFamily || "Montserrat, sans-serif"),
-                    )?.label || "Montserrat"}
-                  </span>
-                </div>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns:
-                      "repeat(auto-fill, minmax(150px, 1fr))",
-                    gap: "8px",
-                  }}
-                >
-                  {FONT_FAMILIES.map((font) => {
-                    const isSelected =
-                      (state.theme.fontFamily || "Montserrat, sans-serif") ===
-                      font.value;
-                    return (
-                      <button
-                        key={font.value}
-                        onClick={() =>
-                          onUpdateTheme?.({ fontFamily: font.value })
-                        }
-                        style={{
-                          textAlign: "left",
-                          padding: "10px 12px",
-                          borderRadius: "8px",
-                          background: isSelected
-                            ? "rgba(56, 189, 248, 0.15)"
-                            : "rgba(255, 255, 255, 0.04)",
-                          border: isSelected
-                            ? "1.5px solid #38bdf8"
-                            : "1px solid rgba(255, 255, 255, 0.08)",
-                          boxShadow: isSelected
-                            ? "0 0 12px rgba(56, 189, 248, 0.25)"
-                            : "none",
-                          cursor: "pointer",
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "2px",
-                          transition: "all 0.15s ease",
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                          }}
-                        >
-                          <span
-                            style={{
-                              fontFamily: font.value,
-                              fontSize: "13px",
-                              fontWeight: 700,
-                              color: isSelected ? "#38bdf8" : "#ffffff",
-                            }}
-                          >
-                            {font.label}
-                          </span>
-                          {isSelected && <Check size={12} color="#38bdf8" />}
-                        </div>
-                        <span style={{ fontSize: "9px", color: "#64748b" }}>
-                          {font.sublabel}
-                        </span>
-                        <div
-                          style={{
-                            fontFamily: font.value,
-                            fontSize: "11px",
-                            color: "#cbd5e1",
-                            marginTop: "4px",
-                            opacity: 0.85,
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                          }}
-                        >
-                          In the beginning
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* 2. SCRIPTURE TEXT FONT SIZE */}
-              <div
-                style={{
-                  background: "rgba(255, 255, 255, 0.02)",
-                  padding: "14px",
-                  borderRadius: "10px",
-                  border: "1px solid rgba(255, 255, 255, 0.06)",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    marginBottom: "8px",
-                  }}
-                >
-                  <label
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: 800,
-                      color: "#e2e8f0",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.05em",
-                    }}
-                  >
-                    2. Scripture Text Font Size
-                  </label>
-                  <span
-                    style={{
-                      fontSize: "13px",
-                      fontWeight: 800,
-                      color: "#f59e0b",
-                      padding: "2px 8px",
-                      borderRadius: "4px",
-                      background: "rgba(245, 158, 11, 0.15)",
-                      border: "1px solid rgba(245, 158, 11, 0.3)",
-                    }}
-                  >
-                    {state.theme.fontSize || 44} px
-                  </span>
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "12px",
-                    marginBottom: "10px",
-                  }}
-                >
-                  <button
-                    onClick={() => {
-                      const cur = state.theme.fontSize || 44;
-                      onUpdateTheme?.({ fontSize: Math.max(24, cur - 4) });
-                    }}
-                    style={{
-                      width: "28px",
-                      height: "28px",
-                      borderRadius: "6px",
-                      background: "rgba(255, 255, 255, 0.08)",
-                      border: "1px solid rgba(255, 255, 255, 0.12)",
-                      color: "#ffffff",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                    title="Decrease font size (-4px)"
-                  >
-                    <Minus size={13} />
-                  </button>
-
-                  <input
-                    type="range"
-                    min="24"
-                    max="96"
-                    step="2"
-                    value={state.theme.fontSize || 44}
-                    onChange={(e) =>
-                      onUpdateTheme?.({ fontSize: Number(e.target.value) })
-                    }
-                    style={{
-                      flex: 1,
-                      accentColor: "#f59e0b",
-                      cursor: "pointer",
-                    }}
-                  />
-
-                  <button
-                    onClick={() => {
-                      const cur = state.theme.fontSize || 44;
-                      onUpdateTheme?.({ fontSize: Math.min(96, cur + 4) });
-                    }}
-                    style={{
-                      width: "28px",
-                      height: "28px",
-                      borderRadius: "6px",
-                      background: "rgba(255, 255, 255, 0.08)",
-                      border: "1px solid rgba(255, 255, 255, 0.12)",
-                      color: "#ffffff",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                    title="Increase font size (+4px)"
-                  >
-                    <Plus size={13} />
-                  </button>
-                </div>
-
-                {/* Quick Presets */}
-                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                  {[
-                    { label: "32px (Compact)", size: 32 },
-                    { label: "44px (Default)", size: 44 },
-                    { label: "56px (Large)", size: 56 },
-                    { label: "72px (Huge)", size: 72 },
-                    { label: "88px (Extra Large)", size: 88 },
-                  ].map((preset) => {
-                    const isSelected =
-                      (state.theme.fontSize || 44) === preset.size;
-                    return (
-                      <button
-                        key={preset.size}
-                        onClick={() =>
-                          onUpdateTheme?.({ fontSize: preset.size })
-                        }
-                        style={{
-                          padding: "4px 10px",
-                          borderRadius: "6px",
-                          background: isSelected
-                            ? "rgba(245, 158, 11, 0.2)"
-                            : "rgba(255, 255, 255, 0.05)",
-                          border: isSelected
-                            ? "1px solid #f59e0b"
-                            : "1px solid rgba(255, 255, 255, 0.08)",
-                          color: isSelected ? "#f59e0b" : "#cbd5e1",
-                          fontSize: "11px",
-                          fontWeight: 700,
-                          cursor: "pointer",
-                        }}
-                      >
-                        {preset.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* 3. COUNTDOWN TIMER FONT SIZE SCALE */}
-              <div
-                style={{
-                  background: "rgba(255, 255, 255, 0.02)",
-                  padding: "14px",
-                  borderRadius: "10px",
-                  border: "1px solid rgba(255, 255, 255, 0.06)",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    marginBottom: "8px",
-                  }}
-                >
-                  <label
-                    style={{
-                      fontSize: "12px",
-                      fontWeight: 800,
-                      color: "#e2e8f0",
-                      textTransform: "uppercase",
-                      letterSpacing: "0.05em",
-                    }}
-                  >
-                    3. Countdown Timer Font Size Scale
-                  </label>
-                  <span
-                    style={{
-                      fontSize: "13px",
-                      fontWeight: 800,
-                      color: "#38bdf8",
-                      padding: "2px 8px",
-                      borderRadius: "4px",
-                      background: "rgba(56, 189, 248, 0.15)",
-                      border: "1px solid rgba(56, 189, 248, 0.3)",
-                    }}
-                  >
-                    {state.timerState.fontSizeScale || 100}%
-                  </span>
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "12px",
-                    marginBottom: "10px",
-                  }}
-                >
-                  <button
-                    onClick={() => {
-                      const cur = state.timerState.fontSizeScale || 100;
-                      setTimerConfig({ fontSizeScale: Math.max(50, cur - 10) });
-                    }}
-                    style={{
-                      width: "28px",
-                      height: "28px",
-                      borderRadius: "6px",
-                      background: "rgba(255, 255, 255, 0.08)",
-                      border: "1px solid rgba(255, 255, 255, 0.12)",
-                      color: "#ffffff",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                    title="Decrease timer size (-10%)"
-                  >
-                    <Minus size={13} />
-                  </button>
-
-                  <input
-                    type="range"
-                    min="50"
-                    max="250"
-                    step="5"
-                    value={state.timerState.fontSizeScale || 100}
-                    onChange={(e) =>
-                      setTimerConfig({ fontSizeScale: Number(e.target.value) })
-                    }
-                    style={{
-                      flex: 1,
-                      accentColor: "#38bdf8",
-                      cursor: "pointer",
-                    }}
-                  />
-
-                  <button
-                    onClick={() => {
-                      const cur = state.timerState.fontSizeScale || 100;
-                      setTimerConfig({
-                        fontSizeScale: Math.min(250, cur + 10),
-                      });
-                    }}
-                    style={{
-                      width: "28px",
-                      height: "28px",
-                      borderRadius: "6px",
-                      background: "rgba(255, 255, 255, 0.08)",
-                      border: "1px solid rgba(255, 255, 255, 0.12)",
-                      color: "#ffffff",
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                    }}
-                    title="Increase timer size (+10%)"
-                  >
-                    <Plus size={13} />
-                  </button>
-                </div>
-
-                {/* Quick Presets */}
-                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
-                  {[
-                    { label: "75% (Subtle)", scale: 75 },
-                    { label: "100% (Standard)", scale: 100 },
-                    { label: "125% (Prominent)", scale: 125 },
-                    { label: "150% (Hero)", scale: 150 },
-                    { label: "200% (Maximum)", scale: 200 },
-                  ].map((preset) => {
-                    const isSelected =
-                      (state.timerState.fontSizeScale || 100) === preset.scale;
-                    return (
-                      <button
-                        key={preset.scale}
-                        onClick={() =>
-                          setTimerConfig({ fontSizeScale: preset.scale })
-                        }
-                        style={{
-                          padding: "4px 10px",
-                          borderRadius: "6px",
-                          background: isSelected
-                            ? "rgba(56, 189, 248, 0.2)"
-                            : "rgba(255, 255, 255, 0.05)",
-                          border: isSelected
-                            ? "1px solid #38bdf8"
-                            : "1px solid rgba(255, 255, 255, 0.08)",
-                          color: isSelected ? "#38bdf8" : "#cbd5e1",
-                          fontSize: "11px",
-                          fontWeight: 700,
-                          cursor: "pointer",
-                        }}
-                      >
-                        {preset.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* 4. LIVE SCREEN PREVIEW CARD */}
-              <div>
-                <label
-                  style={{
-                    fontSize: "11px",
-                    fontWeight: 800,
-                    color: "#94a3b8",
-                    textTransform: "uppercase",
-                    letterSpacing: "0.05em",
-                    display: "block",
-                    marginBottom: "6px",
-                  }}
-                >
-                  Live Broadcast Preview
-                </label>
-                <div
-                  style={{
-                    background:
-                      "radial-gradient(ellipse at center, #1e293b 0%, #0f172a 70%, #020617 100%)",
-                    borderRadius: "10px",
-                    border: "1px solid rgba(56, 189, 248, 0.3)",
-                    padding: "14px 18px",
-                    display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "space-between",
-                    minHeight: "130px",
-                  }}
-                >
-                  {/* Top Bar Preview */}
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "flex-start",
-                      borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-                      paddingBottom: "4px",
-                    }}
-                  >
-                    <div style={{ display: "flex", flexDirection: "column" }}>
-                      <span
-                        style={{
-                          fontFamily: "Montserrat, sans-serif",
-                          fontSize: `${Math.round(18 * Math.max(0.6, Math.min(2.0, (state.timerState.fontSizeScale || 100) / 100)))}px`,
-                          fontWeight: 900,
-                          color: "#60a5fa",
-                          lineHeight: 1,
-                        }}
-                      >
-                        {formattedCountdown}
-                      </span>
-                      <div
-                        style={{
-                          height: "2px",
-                          width: `${Math.round(40 * Math.max(0.6, Math.min(2.0, (state.timerState.fontSizeScale || 100) / 100)))}px`,
-                          background: "#60a5fa",
-                          marginTop: "2px",
-                        }}
-                      />
-                    </div>
-                    <span
-                      style={{
-                        fontSize: "10px",
-                        fontWeight: 700,
-                        color: "#f59e0b",
-                      }}
-                    >
-                      {new Date(now).toLocaleTimeString("en-US", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
-                  </div>
-
-                  {/* Text Preview */}
-                  <div
-                    style={{
-                      fontFamily:
-                        state.theme.fontFamily || "Montserrat, sans-serif",
-                      fontSize: `${Math.round(14 * Math.max(0.7, Math.min(1.8, (state.theme.fontSize || 44) / 44)))}px`,
-                      fontWeight: 600,
-                      color: "#ffffff",
-                      textAlign: "center",
-                      padding: "10px 4px",
-                      lineHeight: 1.4,
-                      textShadow: "0 2px 10px rgba(0, 0, 0, 0.9)",
-                    }}
-                  >
-                    "
-                    {state.lines[state.cur] ||
-                      "For God so loved the world that he gave his one and only Son, that whoever believes in him shall not perish but have eternal life."}
-                    "
-                  </div>
-
-                  {/* Reference */}
-                  <div
-                    style={{
-                      textAlign: "center",
-                      fontSize: "10px",
-                      fontWeight: 800,
-                      color: "#38bdf8",
-                    }}
-                  >
-                    {state.title || scriptureResult?.reference || "John 3:16"} (
-                    {state.subtitle || scriptureResult?.version || "NIV"})
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div
-              style={{
-                padding: "14px 22px",
-                borderTop: "1px solid rgba(255, 255, 255, 0.08)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                background: "rgba(255, 255, 255, 0.02)",
-              }}
-            >
-              <button
-                onClick={() => {
-                  onUpdateTheme?.({
-                    fontFamily: "Montserrat, sans-serif",
-                    fontSize: 44,
-                  });
-                  setTimerConfig({ fontSizeScale: 100 });
-                }}
-                style={{
-                  padding: "7px 14px",
-                  borderRadius: "6px",
-                  background: "rgba(255, 255, 255, 0.05)",
-                  border: "1px solid rgba(255, 255, 255, 0.1)",
-                  color: "#94a3b8",
-                  fontSize: "12px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                }}
-              >
-                <RotateCcw size={12} />
-                <span>Reset to Defaults</span>
-              </button>
-
-              <button
-                onClick={() => setShowTypographyModal(false)}
-                style={{
-                  padding: "8px 20px",
-                  borderRadius: "8px",
-                  background:
-                    "linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)",
-                  border: "none",
-                  color: "#ffffff",
-                  fontSize: "12px",
-                  fontWeight: 800,
-                  cursor: "pointer",
-                  boxShadow: "0 0 15px rgba(14, 165, 233, 0.4)",
-                }}
-              >
-                Done
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <FormatSettingsModal
+        isOpen={showTypographyModal}
+        onClose={() => setShowTypographyModal(false)}
+        theme={state.theme}
+        timerState={state.timerState}
+        onUpdateTheme={onUpdateTheme || (() => {})}
+        onSetTimerConfig={setTimerConfig}
+        initialTab={formatModalTab}
+        activeCategory={state.category}
+        sampleTitle={state.title}
+        sampleVerse={state.lines[state.cur] || ''}
+      />
 
       {/* ============================================================= */}
       {/* SONG BANK MANUAL LYRIC ADD & EDIT MODAL                        */}

@@ -291,16 +291,28 @@ export const LiveConsole: React.FC<LiveConsoleProps> = ({
               width: '90%',
               textAlign: 'center',
             }}>
-              <div style={{ alignSelf: 'flex-start', marginBottom: '2px', opacity: 0.85 }}>
-                <svg width="18" height="14" viewBox="0 0 32 28" fill="#475569">
-                  <path d="M0 16.5C0 9.8 4.2 3.5 11.8 0L14 4.1C9.6 6.3 7.8 9.3 7.3 12.3H14V28H0V16.5ZM18 16.5C18 9.8 22.2 3.5 29.8 0L32 4.1C27.6 6.3 25.8 9.3 25.3 12.3H32V28H18V16.5Z" />
-                </svg>
-              </div>
+              {/* Scripture Title at Top (default, unless titlePosition === 'bottom') */}
+              {theme.scripture?.showTitle !== false && state.title && theme.scripture?.titlePosition !== 'bottom' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                  <div style={{ width: '18px', height: '1px', background: 'rgba(255,255,255,0.3)' }} />
+                  <span style={{
+                    fontSize: '10px',
+                    fontWeight: 800,
+                    color: theme.scripture?.titleFontColor || '#38bdf8',
+                    letterSpacing: '0.04em',
+                    textTransform: 'uppercase',
+                    fontFamily: theme.scripture?.titleFontFamily || 'Montserrat, sans-serif'
+                  }}>
+                    {state.title}
+                  </span>
+                  <div style={{ width: '18px', height: '1px', background: 'rgba(255,255,255,0.3)' }} />
+                </div>
+              )}
               <div style={{
-                fontFamily: '"Playfair Display", "Merriweather", "Georgia", serif',
-                fontWeight: 600,
-                fontStyle: 'italic',
-                color: '#ffffff',
+                fontFamily: theme.scripture?.bodyFontFamily || '"Playfair Display", "Merriweather", "Georgia", serif',
+                fontWeight: theme.scripture?.bodyFontStyle?.includes('bold') ? 700 : 500,
+                fontStyle: theme.scripture?.bodyFontStyle?.includes('italic') ? 'italic' : 'normal',
+                color: theme.scripture?.bodyFontColor || '#ffffff',
                 fontSize: '13px',
                 lineHeight: 1.4,
                 overflow: 'hidden',
@@ -311,13 +323,23 @@ export const LiveConsole: React.FC<LiveConsoleProps> = ({
               }}>
                 {state.lines[state.cur]?.replace(/^\d+[\s:.]\s+/, '').replace(/^["“](.*)["”]$/, '$1') || '(Empty slide)'}
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
-                <div style={{ width: '18px', height: '1px', background: 'rgba(255,255,255,0.3)' }} />
-                <span style={{ fontSize: '10px', fontWeight: 700, color: '#cbd5e1' }}>
-                  {state.title}
-                </span>
-                <div style={{ width: '18px', height: '1px', background: 'rgba(255,255,255,0.3)' }} />
-              </div>
+              {/* Scripture Title at Bottom (only if titlePosition === 'bottom') */}
+              {theme.scripture?.showTitle !== false && state.title && theme.scripture?.titlePosition === 'bottom' && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '6px' }}>
+                  <div style={{ width: '18px', height: '1px', background: 'rgba(255,255,255,0.3)' }} />
+                  <span style={{
+                    fontSize: '10px',
+                    fontWeight: 800,
+                    color: theme.scripture?.titleFontColor || '#38bdf8',
+                    letterSpacing: '0.04em',
+                    textTransform: 'uppercase',
+                    fontFamily: theme.scripture?.titleFontFamily || 'Montserrat, sans-serif'
+                  }}>
+                    {state.title}
+                  </span>
+                  <div style={{ width: '18px', height: '1px', background: 'rgba(255,255,255,0.3)' }} />
+                </div>
+              )}
             </div>
           ) : (
             <div style={{

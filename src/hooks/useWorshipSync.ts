@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { AppState, WebSocketClientMessage, WebSocketServerMessage, PresentationTheme, LiveState, Schedule, ScheduleItem, LibraryItem, TimerState, TimerSlot } from '../types';
-import { DEFAULT_THEME, DEFAULT_LIBRARY_ITEMS, DEFAULT_SCHEDULES, DEFAULT_TIMER_STATE } from '../data/defaults';
+import { DEFAULT_THEME, DEFAULT_LIBRARY_ITEMS, DEFAULT_SCHEDULES, DEFAULT_TIMER_STATE, DEFAULT_SCRIPTURE_FORMATTING, DEFAULT_LYRICS_FORMATTING } from '../data/defaults';
 
 const INITIAL_STATE: AppState = {
   title: 'Psalm 23',
@@ -62,6 +62,14 @@ function getCachedStateForSession(sessionId: string): AppState {
           theme: {
             ...INITIAL_STATE.theme,
             ...(parsed.theme || {}),
+            scripture: {
+              ...(INITIAL_STATE.theme.scripture || DEFAULT_SCRIPTURE_FORMATTING),
+              ...((parsed.theme && parsed.theme.scripture) || {}),
+            },
+            lyrics: {
+              ...(INITIAL_STATE.theme.lyrics || DEFAULT_LYRICS_FORMATTING),
+              ...((parsed.theme && parsed.theme.lyrics) || {}),
+            },
           },
         };
 

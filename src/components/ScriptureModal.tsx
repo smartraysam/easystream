@@ -186,7 +186,7 @@ export const ScriptureModal: React.FC<ScriptureModalProps> = ({
     if (mode === "full") {
       const refHeader = `${res.reference}`;
       const text = res.verses.map((v) => `${v.verse} ${v.text}`).join("\n\n");
-      return [withRef ? `${text}\n\n${refHeader}` : text];
+      return [withRef ? `${refHeader}\n\n${text}` : text];
     }
 
     if (mode === "double") {
@@ -198,7 +198,7 @@ export const ScriptureModal: React.FC<ScriptureModalProps> = ({
             ? `${baseBookChapter}:${pair[0].verse}`
             : `${baseBookChapter}:${pair[0].verse}-${pair[1].verse}`;
         const text = pair.map((v) => `${v.verse} ${v.text}`).join("\n\n");
-        slides.push(withRef ? `${text}\n\n${pairRef}` : text);
+        slides.push(withRef ? `${pairRef}\n\n${text}` : text);
       }
       return slides;
     }
@@ -210,7 +210,7 @@ export const ScriptureModal: React.FC<ScriptureModalProps> = ({
         res.verses.length === 1
           ? res.reference
           : `${baseBookChapter}:${v.verse}`;
-      return withRef ? `${cleanVerse}\n\n${verseRef}` : cleanVerse;
+      return withRef ? `${verseRef}\n\n${cleanVerse}` : cleanVerse;
     });
   };
 

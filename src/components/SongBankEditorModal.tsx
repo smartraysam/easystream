@@ -15,7 +15,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { LibraryItem } from '../types';
-import { parseLyricsToSlides } from '../utils/lyricParser';
+import { parseLyricsToSlides, formatLyricsText, LyricSplitMode } from '../utils/lyricParser';
 
 export interface SongBankEditorItem {
   id?: string;
@@ -26,7 +26,7 @@ export interface SongBankEditorItem {
   plainLyrics?: string;
   trackName?: string;
   artistName?: string;
-  splitMode?: 'smart' | 'stanzas' | 'lines';
+  splitMode?: LyricSplitMode;
 }
 
 export interface SongBankEditorModalProps {
@@ -62,7 +62,7 @@ export const SongBankEditorModal: React.FC<SongBankEditorModalProps> = ({
   const [author, setAuthor] = useState('');
   const [category, setCategory] = useState<'song' | 'hymn' | 'custom'>('song');
   const [content, setContent] = useState('');
-  const [splitMode, setSplitMode] = useState<'smart' | 'stanzas' | 'lines'>('smart');
+  const [splitMode, setSplitMode] = useState<LyricSplitMode>('smart');
   const [feedback, setFeedback] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -155,6 +155,48 @@ export const SongBankEditorModal: React.FC<SongBankEditorModalProps> = ({
     }, 10);
   };
 
+  // Format lyrics content directly inside textarea and update preview slides
+  const handleFormatTextarea = (mode: LyricSplitMode) => {
+    setSplitMode(mode);
+    if (!content.trim()) return;
+    const formatted = formatLyricsText(content, mode);
+    setContent(formatted);
+    const slides = parseLyricsToSlides(formatted, mode);
+    const modeLabel =
+      mode === 'lines'
+        ? '1 Line'
+        : mode === 'smart3'
+        ? 'Smart 3 (3 Lines)'
+        : mode === 'stanzas'
+        ? 'Stanzas'
+        : 'Smart 2 (2 Lines)';
+    setFeedback(`Formatted text area & preview into ${modeLabel} slides (${slides.length} slides)`);
+    setTimeout(() => setFeedback(null), 3000);
+  };
+
+  // Intercept paste in textarea to offer auto-format
+  const handleTextareaPaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
+    const pasted = e.clipboardData.getData('text');
+    if (!content.trim() && pasted) {
+      e.preventDefault();
+      const formatted = formatLyricsText(pasted, splitMode);
+      setContent(formatted);
+      const modeLabel =
+        splitMode === 'lines'
+          ? '1-line'
+          : splitMode === 'smart3'
+          ? 'Smart 3-line'
+          : splitMode === 'stanzas'
+          ? 'Stanza'
+          : 'Smart 2-line';
+      setFeedback(`Pasted & auto-formatted into ${modeLabel} slides! (Click options above to change format)`);
+      setTimeout(() => setFeedback(null), 3500);
+    } else {
+      setFeedback('Lyrics pasted! Click [1 Line], [Smart 2], or [Smart 3] above to format slides.');
+      setTimeout(() => setFeedback(null), 3500);
+    }
+  };
+
   // Helper to paste from clipboard
   const handlePasteClipboard = async () => {
     try {
@@ -162,7 +204,17 @@ export const SongBankEditorModal: React.FC<SongBankEditorModalProps> = ({
         const text = await navigator.clipboard.readText();
         if (text) {
           if (!content.trim()) {
-            setContent(text);
+            const formatted = formatLyricsText(text, splitMode);
+            setContent(formatted);
+            const modeLabel =
+              splitMode === 'lines'
+                ? '1-line'
+                : splitMode === 'smart3'
+                ? 'Smart 3-line'
+                : splitMode === 'stanzas'
+                ? 'Stanza'
+                : 'Smart 2-line';
+            setFeedback(`Pasted & auto-formatted into ${modeLabel} slides!`);
           } else {
             const textarea = textareaRef.current;
             if (textarea) {
@@ -174,9 +226,9 @@ export const SongBankEditorModal: React.FC<SongBankEditorModalProps> = ({
             } else {
               setContent((prev) => `${prev}\n\n${text}`);
             }
+            setFeedback('Pasted from clipboard! Click 1 Line, Smart 2, or Smart 3 above to format.');
           }
-          setFeedback('Pasted from clipboard!');
-          setTimeout(() => setFeedback(null), 2500);
+          setTimeout(() => setFeedback(null), 3000);
           return;
         }
       }
@@ -567,18 +619,19 @@ export const SongBankEditorModal: React.FC<SongBankEditorModalProps> = ({
                 >
                   {(
                     [
-                      { id: 'smart', label: 'Smart (2-3 lines)' },
-                      { id: 'stanzas', label: 'Stanzas (Paragraphs)' },
-                      { id: 'lines', label: '1 Line / Slide' },
+                      { id: 'lines', label: '1 Line' },
+                      { id: 'smart', label: 'Smart 2' },
+                      { id: 'smart3', label: 'Smart 3' },
+                      { id: 'stanzas', label: 'Stanzas' },
                     ] as const
                   ).map((m) => (
                     <button
                       key={m.id}
                       type="button"
-                      onClick={() => setSplitMode(m.id)}
+                      onClick={() => handleFormatTextarea(m.id)}
                       style={{
                         flex: 1,
-                        padding: '6px 8px',
+                        padding: '6px 5px',
                         borderRadius: '6px',
                         fontSize: '11px',
                         fontWeight: 700,
@@ -599,6 +652,7 @@ export const SongBankEditorModal: React.FC<SongBankEditorModalProps> = ({
 
             {/* Lyrics Text Area Container */}
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '260px' }}>
+      
               {/* Toolbar above textarea: Section marker badges & Quick Actions */}
               <div
                 style={{
@@ -709,10 +763,11 @@ export const SongBankEditorModal: React.FC<SongBankEditorModalProps> = ({
                 </div>
               </div>
 
-              {/* Textarea */}
+              {/* Textarea with onPaste */}
               <textarea
                 ref={textareaRef}
                 value={content}
+                onPaste={handleTextareaPaste}
                 onChange={(e) => {
                   setContent(e.target.value);
                   if (errorMessage) setErrorMessage(null);
@@ -814,7 +869,16 @@ Even when I don't feel it, You're working`}
               </div>
 
               <div style={{ fontSize: '11px', color: '#64748b' }}>
-                Mode: <strong style={{ color: '#c084fc' }}>{splitMode.toUpperCase()}</strong>
+                Mode:{' '}
+                <strong style={{ color: '#c084fc' }}>
+                  {splitMode === 'lines'
+                    ? '1 LINE'
+                    : splitMode === 'smart3'
+                    ? 'SMART 3'
+                    : splitMode === 'stanzas'
+                    ? 'STANZAS'
+                    : 'SMART 2'}
+                </strong>
               </div>
             </div>
 

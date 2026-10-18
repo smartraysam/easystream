@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AppState } from '../types';
+import { DEFAULT_SCRIPTURE_FORMATTING, DEFAULT_LYRICS_FORMATTING } from '../data/defaults';
 import { Maximize2, Minimize2, Tv, Circle, AlertTriangle } from 'lucide-react';
 
 interface DisplayViewProps {
@@ -246,14 +247,19 @@ export const DisplayView: React.FC<DisplayViewProps> = ({
 
   if (isScriptureCategory) {
     const doubleNewlineParts = displayedLine.split(/\n\s*\n/);
+    const looksLikeRef = (str: string) =>
+      (/^[1-3]?\s*[A-Za-z\s]+\s+\d+(?::\d+(?:-\d+)?)?(?:\s*\([A-Z0-9\s]+\))?$/i.test(str) ||
+       /^[1-3]?\s*[A-Za-z\s]+\s*\([A-Z0-9\s]+\)$/i.test(str) ||
+       str.startsWith('—') ||
+       str.startsWith('-'));
+
     if (doubleNewlineParts.length > 1) {
+      const firstPart = doubleNewlineParts[0].trim();
       const lastPart = doubleNewlineParts[doubleNewlineParts.length - 1].trim();
-      // Check if last part looks like a scripture reference
-      const looksLikeRef =
-        /^[1-3]?\s*[A-Za-z\s]+(?:\s+\d+(?::\d+(?:-\d+)?)?)?(?:\s*\([A-Z0-9]+\))?$/i.test(lastPart) ||
-        lastPart.startsWith('—') ||
-        lastPart.startsWith('-');
-      if (looksLikeRef && lastPart.length < 60) {
+      if (looksLikeRef(firstPart) && firstPart.length < 60) {
+        citationRef = firstPart.replace(/^[—\-]\s*/, '').trim();
+        cleanVerseText = doubleNewlineParts.slice(1).join('\n\n').trim();
+      } else if (looksLikeRef(lastPart) && lastPart.length < 60) {
         citationRef = lastPart.replace(/^[—\-]\s*/, '').trim();
         cleanVerseText = doubleNewlineParts.slice(0, -1).join('\n\n').trim();
       }
@@ -261,6 +267,9 @@ export const DisplayView: React.FC<DisplayViewProps> = ({
 
     if (!citationRef) {
       citationRef = state.title;
+      if (citationRef && state.subtitle && !citationRef.includes('(')) {
+        citationRef = `${citationRef} (${state.subtitle})`;
+      }
     }
 
     // Clean leading verse number if single verse is displayed (e.g. "16 For God so loved..." -> "For God so loved...")
@@ -269,26 +278,31 @@ export const DisplayView: React.FC<DisplayViewProps> = ({
     }
 
     // Clean outer quotes if already wrapped
-    cleanVerseText = cleanVerseText.replace(/^["“](.*)["”]$/, '$1').trim();
+    cleanVerseText = cleanVerseText.replace(/^[“"']+|[”"']+$/g, '').trim();
   }
 
   // Compute next scripture preview: only show next verse if it exists in the active scripture sequence, otherwise nothing
   let nextScripturePreview = '';
   if (isScriptureCategory && displayedNext) {
     const nextParts = displayedNext.split(/\n\s*\n/);
-    let nextText = nextParts.length > 1 ? nextParts.slice(0, -1).join(' ').trim() : nextParts[0].trim();
+    const looksLikeRef = (str: string) =>
+      (/^[1-3]?\s*[A-Za-z\s]+\s+\d+(?::\d+(?:-\d+)?)?(?:\s*\([A-Z0-9\s]+\))?$/i.test(str) ||
+       /^[1-3]?\s*[A-Za-z\s]+\s*\([A-Z0-9\s]+\)$/i.test(str) ||
+       str.startsWith('—') ||
+       str.startsWith('-'));
+
+    let nextText = displayedNext.trim();
     let nextRef = '';
 
     if (nextParts.length > 1) {
-      const candidate = nextParts[nextParts.length - 1].replace(/^[—\-]\s*/, '').trim();
-      const looksLikeRef =
-        /^[1-3]?\s*[A-Za-z\s]+(?:\s+\d+(?::\d+(?:-\d+)?)?)?(?:\s*\([A-Z0-9]+\))?$/i.test(candidate) ||
-        candidate.startsWith('—') ||
-        candidate.startsWith('-');
-      if (looksLikeRef && candidate.length < 60) {
-        nextRef = candidate;
-      } else {
-        nextText = displayedNext.trim();
+      const firstCandidate = nextParts[0].replace(/^[—\-]\s*/, '').trim();
+      const lastCandidate = nextParts[nextParts.length - 1].replace(/^[—\-]\s*/, '').trim();
+      if (looksLikeRef(firstCandidate) && firstCandidate.length < 60) {
+        nextRef = firstCandidate;
+        nextText = nextParts.slice(1).join(' ').trim();
+      } else if (looksLikeRef(lastCandidate) && lastCandidate.length < 60) {
+        nextRef = lastCandidate;
+        nextText = nextParts.slice(0, -1).join(' ').trim();
       }
     }
 
@@ -306,8 +320,19 @@ export const DisplayView: React.FC<DisplayViewProps> = ({
     }
   }
 
-  // Dynamic adaptive font scaling & line height based on scripture verse length & user theme.fontSize
-  const textScale = Math.max(0.4, Math.min(2.5, (theme.fontSize || 44) / 44));
+  // Active scripture & lyrics formatting configurations
+  const scriptureFormat = {
+    ...DEFAULT_SCRIPTURE_FORMATTING,
+    ...(theme.scripture || {}),
+  };
+
+  const lyricsFormat = {
+    ...DEFAULT_LYRICS_FORMATTING,
+    ...(theme.lyrics || {}),
+  };
+
+  // Dynamic adaptive font scaling & line height based on scripture verse length & configured scripture bodyFontSize
+  const textScale = Math.max(0.4, Math.min(2.5, (scriptureFormat.bodyFontSize || 52) / 52));
   const timerScale = Math.max(0.5, Math.min(3.0, (timerState.fontSizeScale || 100) / 100));
 
   const verseLength = (cleanVerseText || '').length;
@@ -762,13 +787,36 @@ export const DisplayView: React.FC<DisplayViewProps> = ({
               width: '100%',
               display: 'flex',
               flexDirection: 'column',
-              alignItems: isScriptureCategory ? 'center' : (theme.textAlign === 'left' ? 'flex-start' : theme.textAlign === 'right' ? 'flex-end' : 'center'),
-              textAlign: isScriptureCategory ? 'center' : theme.textAlign,
+              alignItems: isScriptureCategory
+                ? (scriptureFormat.textAlign === 'left' ? 'flex-start' : scriptureFormat.textAlign === 'right' ? 'flex-end' : 'center')
+                : (lyricsFormat.textAlign === 'left' ? 'flex-start' : lyricsFormat.textAlign === 'right' ? 'flex-end' : 'center'),
+              textAlign: isScriptureCategory ? scriptureFormat.textAlign : lyricsFormat.textAlign,
               opacity: fading ? 0 : 1,
               transform: fading ? 'translateY(10px) scale(0.98)' : 'translateY(0) scale(1)',
               transition: 'opacity 0.2s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
               padding: '2rem 1.5rem',
-              marginTop: (!liveState.isBlackout && (showTimerWidget || showClockWidget)) ? '5.5rem' : '0',
+              marginTop: isScriptureCategory
+                ? (scriptureFormat.verticalAlign === 'top'
+                    ? ((!liveState.isBlackout && (showTimerWidget || showClockWidget)) ? '6.5rem' : '2.5rem')
+                    : scriptureFormat.verticalAlign === 'bottom'
+                      ? 'auto'
+                      : ((!liveState.isBlackout && (showTimerWidget || showClockWidget)) ? '5.5rem' : '0'))
+                : (lyricsFormat.verticalAlign === 'top'
+                    ? ((!liveState.isBlackout && (showTimerWidget || showClockWidget)) ? '6.5rem' : '2.5rem')
+                    : lyricsFormat.verticalAlign === 'bottom'
+                      ? 'auto'
+                      : ((!liveState.isBlackout && (showTimerWidget || showClockWidget)) ? '5.5rem' : '0')),
+              marginBottom: isScriptureCategory
+                ? (scriptureFormat.verticalAlign === 'bottom'
+                    ? ((!liveState.isBlackout && nextScripturePreview) ? '6rem' : '2.5rem')
+                    : scriptureFormat.verticalAlign === 'top'
+                      ? 'auto'
+                      : '0')
+                : (lyricsFormat.verticalAlign === 'bottom'
+                    ? ((!liveState.isBlackout && displayedNext) ? '6rem' : '2.5rem')
+                    : lyricsFormat.verticalAlign === 'top'
+                      ? 'auto'
+                      : '0'),
               ...(effectiveOverlay && {
                 background: 'rgba(0, 0, 0, 0.65)',
                 padding: '2rem 3rem',
@@ -779,75 +827,96 @@ export const DisplayView: React.FC<DisplayViewProps> = ({
               }),
             }}
           >
-            {/* Scripture Specific Layout (Quotation Mark + Adaptive Italic Serif + Flanked Reference) */}
+            {/* Scripture Specific Layout (Flanked Title at Top + Adaptive Verse) */}
             {isScriptureCategory ? (
               <div
                 style={{
                   display: 'flex',
                   flexDirection: 'column',
-                  alignItems: 'center',
+                  alignItems: scriptureFormat.textAlign === 'left' ? 'flex-start' : scriptureFormat.textAlign === 'right' ? 'flex-end' : 'center',
                   width: '100%',
                   position: 'relative',
                 }}
               >
-                {/* Stylized Double Quotation Mark (Top Left) */}
-                <div
-                  style={{
-                    alignSelf: 'flex-start',
-                    marginBottom: '1rem',
-                    opacity: 0.9,
-                    marginLeft: '0.5rem',
-                  }}
-                >
-                  <svg width="56" height="46" viewBox="0 0 32 28" fill="#2d3139">
-                    <path d="M0 16.5C0 9.8 4.2 3.5 11.8 0L14 4.1C9.6 6.3 7.8 9.3 7.3 12.3H14V28H0V16.5ZM18 16.5C18 9.8 22.2 3.5 29.8 0L32 4.1C27.6 6.3 25.8 9.3 25.3 12.3H32V28H18V16.5Z" />
-                  </svg>
-                </div>
+                {/* Flanked Scripture Citation Reference / Title at Top (default, omitted if showTitle is false or titlePosition is bottom) */}
+                {scriptureFormat.showTitle && citationRef && scriptureFormat.titlePosition !== 'bottom' && (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: scriptureFormat.textAlign === 'left' ? 'flex-start' : scriptureFormat.textAlign === 'right' ? 'flex-end' : 'center',
+                      gap: '24px',
+                      marginBottom: '1.75rem',
+                      width: '100%',
+                    }}
+                  >
+                    <div style={{ width: '60px', height: '2px', background: 'rgba(255, 255, 255, 0.35)', borderRadius: '2px' }} />
+                    <span
+                      style={{
+                        fontFamily: scriptureFormat.titleFontFamily || theme.fontFamily || 'Montserrat, sans-serif',
+                        fontSize: `clamp(${Math.round(scriptureFormat.titleFontSize * 0.75)}px, 2.4vw, ${scriptureFormat.titleFontSize}px)`,
+                        fontWeight: scriptureFormat.titleFontStyle.includes('bold') ? 800 : 500,
+                        fontStyle: scriptureFormat.titleFontStyle.includes('italic') ? 'italic' : 'normal',
+                        color: scriptureFormat.titleFontColor || theme.accentColor || '#38bdf8',
+                        letterSpacing: '0.06em',
+                        textTransform: 'uppercase',
+                        textShadow: combinedTextShadow !== 'none' ? combinedTextShadow : '0 2px 14px rgba(0, 0, 0, 0.95)',
+                      }}
+                    >
+                      {citationRef}
+                    </span>
+                    <div style={{ width: '60px', height: '2px', background: 'rgba(255, 255, 255, 0.35)', borderRadius: '2px' }} />
+                  </div>
+                )}
 
                 {/* Dynamic Auto-Adjusted Scripture Verse Text */}
                 <div
                   style={{
-                    fontFamily: theme.fontFamily || '"Playfair Display", "Merriweather", "Georgia", serif',
+                    fontFamily: scriptureFormat.bodyFontFamily || theme.fontFamily || '"Playfair Display", "Merriweather", "Georgia", serif',
                     fontSize: dynamicScriptureFontSize,
-                    fontWeight: 600,
-                    fontStyle: 'italic',
-                    color: '#ffffff',
+                    fontWeight: scriptureFormat.bodyFontStyle.includes('bold') ? 700 : 500,
+                    fontStyle: scriptureFormat.bodyFontStyle.includes('italic') ? 'italic' : 'normal',
+                    color: scriptureFormat.bodyFontColor || '#ffffff',
                     lineHeight: dynamicLineHeight,
                     letterSpacing: '-0.015em',
                     textShadow: combinedTextShadow !== 'none' ? combinedTextShadow : '0 2px 20px rgba(0, 0, 0, 0.9)',
                     whiteSpace: 'pre-line',
                     wordBreak: 'break-word',
                     maxWidth: '1440px',
+                    textAlign: scriptureFormat.textAlign,
                   }}
                 >
-                  {cleanVerseText}
+                  “{cleanVerseText}”
                 </div>
 
-                {/* Flanked Scripture Citation Reference at Bottom */}
-                {citationRef && (
+                {/* Flanked Scripture Citation Reference / Title at Bottom (only if titlePosition === 'bottom') */}
+                {scriptureFormat.showTitle && citationRef && scriptureFormat.titlePosition === 'bottom' && (
                   <div
                     style={{
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: '20px',
-                      marginTop: '2.5rem',
+                      justifyContent: scriptureFormat.textAlign === 'left' ? 'flex-start' : scriptureFormat.textAlign === 'right' ? 'flex-end' : 'center',
+                      gap: '24px',
+                      marginTop: '1.75rem',
                       width: '100%',
                     }}
                   >
-                    <div style={{ width: '70px', height: '1.5px', background: 'rgba(255, 255, 255, 0.25)' }} />
+                    <div style={{ width: '60px', height: '2px', background: 'rgba(255, 255, 255, 0.35)', borderRadius: '2px' }} />
                     <span
                       style={{
-                        fontFamily: theme.fontFamily || 'Inter, Montserrat, sans-serif',
-                        fontSize: 'clamp(20px, 2.2vw, 28px)',
-                        fontWeight: 800,
-                        color: '#e2e8f0',
-                        letterSpacing: '0.04em',
+                        fontFamily: scriptureFormat.titleFontFamily || theme.fontFamily || 'Montserrat, sans-serif',
+                        fontSize: `clamp(${Math.round(scriptureFormat.titleFontSize * 0.75)}px, 2.4vw, ${scriptureFormat.titleFontSize}px)`,
+                        fontWeight: scriptureFormat.titleFontStyle.includes('bold') ? 800 : 500,
+                        fontStyle: scriptureFormat.titleFontStyle.includes('italic') ? 'italic' : 'normal',
+                        color: scriptureFormat.titleFontColor || theme.accentColor || '#38bdf8',
+                        letterSpacing: '0.06em',
+                        textTransform: 'uppercase',
+                        textShadow: combinedTextShadow !== 'none' ? combinedTextShadow : '0 2px 14px rgba(0, 0, 0, 0.95)',
                       }}
                     >
                       {citationRef}
                     </span>
-                    <div style={{ width: '70px', height: '1.5px', background: 'rgba(255, 255, 255, 0.25)' }} />
+                    <div style={{ width: '60px', height: '2px', background: 'rgba(255, 255, 255, 0.35)', borderRadius: '2px' }} />
                   </div>
                 )}
               </div>
@@ -855,20 +924,50 @@ export const DisplayView: React.FC<DisplayViewProps> = ({
               /* General Song / Hymn Slide Text */
               <div
                 style={{
-                  fontFamily: theme.fontFamily,
-                  fontSize: `${theme.fontSize}px`,
-                  fontWeight: theme.fontWeight,
-                  fontStyle: theme.fontStyle,
-                  textTransform: theme.textTransform,
-                  color: theme.textColor,
-                  lineHeight: theme.lineHeight,
-                  letterSpacing: `${theme.letterSpacing}px`,
-                  textShadow: combinedTextShadow,
-                  whiteSpace: 'pre-line',
-                  wordBreak: 'break-word',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: lyricsFormat.textAlign === 'left' ? 'flex-start' : lyricsFormat.textAlign === 'right' ? 'flex-end' : 'center',
+                  width: '100%',
                 }}
               >
-                {displayedLine}
+                {/* Optional Song Title on Display */}
+                {lyricsFormat.showTitle && state.title && (
+                  <div
+                    style={{
+                      fontFamily: lyricsFormat.titleFontFamily || theme.fontFamily,
+                      fontSize: `clamp(${Math.round(lyricsFormat.titleFontSize * 0.75)}px, 2.2vw, ${lyricsFormat.titleFontSize}px)`,
+                      fontWeight: lyricsFormat.titleFontStyle.includes('bold') ? 800 : 600,
+                      fontStyle: lyricsFormat.titleFontStyle.includes('italic') ? 'italic' : 'normal',
+                      color: lyricsFormat.titleFontColor || '#f59e0b',
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.08em',
+                      marginBottom: '1.25rem',
+                      textShadow: combinedTextShadow !== 'none' ? combinedTextShadow : '0 2px 10px rgba(0, 0, 0, 0.9)',
+                    }}
+                  >
+                    {state.title}
+                  </div>
+                )}
+
+                {/* Lyrics Body */}
+                <div
+                  style={{
+                    fontFamily: lyricsFormat.bodyFontFamily || theme.fontFamily,
+                    fontSize: `${lyricsFormat.bodyFontSize || theme.fontSize}px`,
+                    fontWeight: lyricsFormat.bodyFontStyle.includes('bold') ? 800 : (lyricsFormat.bodyFontWeight || theme.fontWeight || 700),
+                    fontStyle: lyricsFormat.bodyFontStyle.includes('italic') ? 'italic' : (theme.fontStyle || 'normal'),
+                    textTransform: lyricsFormat.bodyTextTransform || theme.textTransform || 'none',
+                    color: lyricsFormat.bodyFontColor || theme.textColor || '#ffffff',
+                    lineHeight: theme.lineHeight || 1.45,
+                    letterSpacing: `${theme.letterSpacing || 0.5}px`,
+                    textShadow: combinedTextShadow,
+                    whiteSpace: 'pre-line',
+                    wordBreak: 'break-word',
+                    textAlign: lyricsFormat.textAlign,
+                  }}
+                >
+                  {displayedLine}
+                </div>
               </div>
             )}
           </div>

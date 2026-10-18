@@ -39,6 +39,53 @@ export interface PresentationTheme {
   showProgressBar: boolean;
   showReferenceBadge: boolean;
   maxLinesPerSlide?: number;
+
+  // Dedicated formatting for Scripture & Lyrics
+  scripture?: ScriptureFormatting;
+  lyrics?: LyricsFormatting;
+}
+
+export type TextFontStyle = 'normal' | 'italic' | 'bold' | 'bold-italic';
+
+export interface ScriptureFormatting {
+  // Scripture reference / title (e.g. Luke 12:1)
+  showTitle: boolean;
+  titlePosition?: 'top' | 'bottom';
+  titleFontFamily: string;
+  titleFontSize: number;
+  titleFontColor: string;
+  titleFontStyle: TextFontStyle;
+
+  // Scripture body (verse text)
+  bodyFontFamily: string;
+  bodyFontSize: number;
+  bodyFontColor: string;
+  bodyFontStyle: TextFontStyle;
+
+  // Text position on display
+  textAlign: TextAlignment;
+  verticalAlign: VerticalAlignment;
+}
+
+export interface LyricsFormatting {
+  // Song title / banner
+  showTitle: boolean;
+  titleFontFamily: string;
+  titleFontSize: number;
+  titleFontColor: string;
+  titleFontStyle: TextFontStyle;
+
+  // Lyrics body (stanzas/lines)
+  bodyFontFamily: string;
+  bodyFontSize: number;
+  bodyFontColor: string;
+  bodyFontStyle: TextFontStyle;
+  bodyFontWeight?: number;
+  bodyTextTransform?: 'none' | 'uppercase' | 'capitalize';
+
+  // Text position on display
+  textAlign: TextAlignment;
+  verticalAlign: VerticalAlignment;
 }
 
 export interface LibraryItem {

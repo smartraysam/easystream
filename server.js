@@ -24,6 +24,37 @@ if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
+const DEFAULT_SCRIPTURE_FORMATTING = {
+  showTitle: true,
+  titlePosition: "top",
+  titleFontFamily: "Montserrat, sans-serif",
+  titleFontSize: 28,
+  titleFontColor: "#38bdf8",
+  titleFontStyle: "bold",
+  bodyFontFamily: '"Playfair Display", "Merriweather", Georgia, serif',
+  bodyFontSize: 52,
+  bodyFontColor: "#ffffff",
+  bodyFontStyle: "italic",
+  textAlign: "center",
+  verticalAlign: "center",
+};
+
+const DEFAULT_LYRICS_FORMATTING = {
+  showTitle: false,
+  titleFontFamily: "Montserrat, sans-serif",
+  titleFontSize: 24,
+  titleFontColor: "#f59e0b",
+  titleFontStyle: "bold",
+  bodyFontFamily: "Montserrat, sans-serif",
+  bodyFontSize: 48,
+  bodyFontColor: "#ffffff",
+  bodyFontStyle: "normal",
+  bodyFontWeight: 700,
+  bodyTextTransform: "none",
+  textAlign: "center",
+  verticalAlign: "center",
+};
+
 // Initial defaults
 const DEFAULT_THEME = {
   fontFamily: "Montserrat, sans-serif",
@@ -54,6 +85,8 @@ const DEFAULT_THEME = {
   showNextPreview: true,
   showProgressBar: true,
   showReferenceBadge: true,
+  scripture: DEFAULT_SCRIPTURE_FORMATTING,
+  lyrics: DEFAULT_LYRICS_FORMATTING,
 };
 
 const DEFAULT_LIBRARY_ITEMS = [
@@ -444,7 +477,27 @@ function setWpm(sessionId, wpm) {
 
 function setTheme(sessionId, newTheme) {
   const state = getSession(sessionId);
-  state.theme = { ...state.theme, ...newTheme };
+  if (!newTheme || typeof newTheme !== "object") return;
+  state.theme = {
+    ...state.theme,
+    ...newTheme,
+    ...(newTheme.scripture
+      ? {
+          scripture: {
+            ...(state.theme.scripture || DEFAULT_SCRIPTURE_FORMATTING),
+            ...newTheme.scripture,
+          },
+        }
+      : {}),
+    ...(newTheme.lyrics
+      ? {
+          lyrics: {
+            ...(state.theme.lyrics || DEFAULT_LYRICS_FORMATTING),
+            ...newTheme.lyrics,
+          },
+        }
+      : {}),
+  };
   saveStoreToDisk();
 }
 

@@ -13,6 +13,7 @@ import { TimerDisplayView } from './components/TimerDisplayView';
 import { TimerModal } from './components/TimerModal';
 import { SessionModal } from './components/SessionModal';
 import { V2Presenter } from './components/V2Presenter';
+import { FormatSettingsModal } from './components/FormatSettingsModal';
 import { LibraryItem, ScheduleItem } from './types';
 
 export const App: React.FC = () => {
@@ -63,6 +64,7 @@ export const App: React.FC = () => {
   const [isOnlineSearchOpen, setIsOnlineSearchOpen] = useState(false);
   const [isTimerOpen, setIsTimerOpen] = useState(false);
   const [isSessionModalOpen, setIsSessionModalOpen] = useState(false);
+  const [isFormatSettingsOpen, setIsFormatSettingsOpen] = useState(false);
 
   // Handle adding an item from library to the active schedule
   const handleAddToSchedule = (item: LibraryItem) => {
@@ -151,6 +153,7 @@ export const App: React.FC = () => {
         onOpenScriptures={() => setIsScriptureOpen(true)}
         onOpenOnlineSearch={() => setIsOnlineSearchOpen(true)}
         onOpenTimer={() => setIsTimerOpen(true)}
+        onOpenFormatSettings={() => setIsFormatSettingsOpen(true)}
         onSetTimerConfig={setTimerConfig}
         onResetToDefault={resetToDefault}
         onResetAllToDefault={resetAllToDefault}
@@ -263,6 +266,20 @@ export const App: React.FC = () => {
         onSaveSession={saveCurrentSession}
         onResetAllSessions={resetAllToDefault}
         isStartupPrompt={!hasPromptedSession}
+      />
+
+      {/* General Scripture & Lyrics Formatting Settings Modal */}
+      <FormatSettingsModal
+        isOpen={isFormatSettingsOpen}
+        onClose={() => setIsFormatSettingsOpen(false)}
+        theme={state.theme}
+        timerState={state.timerState}
+        onUpdateTheme={updateTheme}
+        onSetTimerConfig={setTimerConfig}
+        initialTab={state.category === 'song' || state.category === 'hymn' ? 'lyrics' : 'scripture'}
+        activeCategory={state.category}
+        sampleTitle={state.title}
+        sampleVerse={state.lines[state.cur] || ''}
       />
     </div>
   );

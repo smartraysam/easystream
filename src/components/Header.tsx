@@ -16,6 +16,7 @@ import {
   Check,
   ChevronDown,
   SlidersHorizontal,
+  Settings,
   EyeOff
 } from 'lucide-react';
 import { LiveState, TimerState } from '../types';
@@ -34,6 +35,7 @@ interface HeaderProps {
   onOpenScriptures: () => void;
   onOpenOnlineSearch: () => void;
   onOpenTimer: () => void;
+  onOpenFormatSettings?: () => void;
   onSetTimerConfig?: (config: Partial<TimerState>) => void;
   onResetToDefault: () => void;
   onResetAllToDefault?: () => void;
@@ -51,6 +53,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenScriptures,
   onOpenOnlineSearch,
   onOpenTimer,
+  onOpenFormatSettings,
   onSetTimerConfig,
   onResetToDefault,
   onResetAllToDefault,
@@ -639,7 +642,7 @@ export const Header: React.FC<HeaderProps> = ({
         </button>
         <button 
           className="btn"
-          style={{ fontSize: '12px', padding: '6px 12px', background: 'rgba(255, 255, 255, 0.08)', color: '#ffffff' }}
+          style={{ fontSize: '12px', padding: '6px 12px', background: 'rgba(255, 255, 255, 0.08)', color: '#ffffff', gap: '6px' }}
           onClick={onOpenLibrary}
         >
           <BookOpen size={14} />
@@ -907,6 +910,29 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           )}
         </div>
+
+        {onOpenFormatSettings && (
+          <button 
+            className="btn"
+            style={{
+              fontSize: '12px',
+              padding: '6px 12px',
+              background: 'rgba(56, 189, 248, 0.1)',
+              borderColor: 'rgba(56, 189, 248, 0.35)',
+              color: '#38bdf8',
+              fontWeight: 700,
+              gap: '6px',
+              display: 'flex',
+              alignItems: 'center',
+            }}
+            onClick={onOpenFormatSettings}
+            title="General Settings: Scripture & Lyrics formatting, fonts, colors, and layout"
+            aria-label="General Settings"
+          >
+            <Settings size={14} color="#38bdf8" />
+            <span>Settings</span>
+          </button>
+        )}
 
         <button
           className="btn btn-icon"

@@ -58,7 +58,7 @@ export const OnlineLyricsSearchModal: React.FC<OnlineLyricsSearchModalProps> = (
   const [lyricsLoading, setLyricsLoading] = useState(false);
   const [onlineSongResults, setOnlineSongResults] = useState<OnlineSongResult[]>([]);
   const [selectedSong, setSelectedSong] = useState<OnlineSongResult | null>(null);
-  const [lyricsSplitMode, setLyricsSplitMode] = useState<'smart' | 'stanzas' | 'lines'>('smart');
+  const [lyricsSplitMode, setLyricsSplitMode] = useState<'smart' | 'smart3' | 'stanzas' | 'lines'>('smart');
   const [lyricsSavedFeedback, setLyricsSavedFeedback] = useState<string | null>(null);
   const [lyricsLiveFeedback, setLyricsLiveFeedback] = useState(false);
   const [lyricsScheduleFeedback, setLyricsScheduleFeedback] = useState(false);
@@ -740,12 +740,28 @@ export const OnlineLyricsSearchModal: React.FC<OnlineLyricsSearchModalProps> = (
                   {!selectedSong.isLocal && (
                     <div style={{ display: 'flex', gap: '3px', background: 'rgba(0, 0, 0, 0.4)', padding: '2px', borderRadius: '6px' }}>
                       <button
+                        className={`btn ${lyricsSplitMode === 'lines' ? 'btn-primary' : ''}`}
+                        style={{ fontSize: '10px', padding: '3px 7px' }}
+                        onClick={() => setLyricsSplitMode('lines')}
+                        title="1 line per slide"
+                      >
+                        1 Line
+                      </button>
+                      <button
                         className={`btn ${lyricsSplitMode === 'smart' ? 'btn-primary' : ''}`}
                         style={{ fontSize: '10px', padding: '3px 7px' }}
                         onClick={() => setLyricsSplitMode('smart')}
-                        title="Smart 2-3 lines per slide"
+                        title="Smart 2 lines per slide"
                       >
-                        Smart (2-3 lines)
+                        Smart 2
+                      </button>
+                      <button
+                        className={`btn ${lyricsSplitMode === 'smart3' ? 'btn-primary' : ''}`}
+                        style={{ fontSize: '10px', padding: '3px 7px' }}
+                        onClick={() => setLyricsSplitMode('smart3')}
+                        title="Smart 3 lines per slide"
+                      >
+                        Smart 3
                       </button>
                       <button
                         className={`btn ${lyricsSplitMode === 'stanzas' ? 'btn-primary' : ''}`}
@@ -754,14 +770,6 @@ export const OnlineLyricsSearchModal: React.FC<OnlineLyricsSearchModalProps> = (
                         title="Full stanzas per slide"
                       >
                         Stanzas
-                      </button>
-                      <button
-                        className={`btn ${lyricsSplitMode === 'lines' ? 'btn-primary' : ''}`}
-                        style={{ fontSize: '10px', padding: '3px 7px' }}
-                        onClick={() => setLyricsSplitMode('lines')}
-                        title="1 line per slide"
-                      >
-                        Single Lines
                       </button>
                     </div>
                   )}

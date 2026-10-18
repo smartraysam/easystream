@@ -1,4 +1,4 @@
-import { PresentationTheme, LibraryItem, Schedule, TimerState, TimerSlot } from '../types';
+import { PresentationTheme, LibraryItem, Schedule, TimerState, TimerSlot, ScriptureFormatting, LyricsFormatting } from '../types';
 
 export const DEFAULT_TIMER_SLOTS: TimerSlot[] = [
   { id: 'slot-1', title: 'Opening & Welcome', durationSec: 300, speaker: 'Host / Worship Leader' },
@@ -78,6 +78,41 @@ export const DEFAULT_TIMER_STATE: TimerState = {
   timerPosition: 'top-right',
 };
 
+export const DEFAULT_SCRIPTURE_FORMATTING: ScriptureFormatting = {
+  showTitle: true,
+  titlePosition: 'top',
+  titleFontFamily: 'Montserrat, sans-serif',
+  titleFontSize: 28,
+  titleFontColor: '#38bdf8',
+  titleFontStyle: 'bold',
+
+  bodyFontFamily: '"Playfair Display", "Merriweather", Georgia, serif',
+  bodyFontSize: 52,
+  bodyFontColor: '#ffffff',
+  bodyFontStyle: 'italic',
+
+  textAlign: 'center',
+  verticalAlign: 'center',
+};
+
+export const DEFAULT_LYRICS_FORMATTING: LyricsFormatting = {
+  showTitle: false,
+  titleFontFamily: 'Montserrat, sans-serif',
+  titleFontSize: 24,
+  titleFontColor: '#f59e0b',
+  titleFontStyle: 'bold',
+
+  bodyFontFamily: 'Montserrat, sans-serif',
+  bodyFontSize: 48,
+  bodyFontColor: '#ffffff',
+  bodyFontStyle: 'normal',
+  bodyFontWeight: 700,
+  bodyTextTransform: 'none',
+
+  textAlign: 'center',
+  verticalAlign: 'center',
+};
+
 export const DEFAULT_THEME: PresentationTheme = {
   fontFamily: 'Montserrat, sans-serif',
   fontSize: 44,
@@ -110,6 +145,9 @@ export const DEFAULT_THEME: PresentationTheme = {
   showNextPreview: true,
   showProgressBar: true,
   showReferenceBadge: true,
+
+  scripture: DEFAULT_SCRIPTURE_FORMATTING,
+  lyrics: DEFAULT_LYRICS_FORMATTING,
 };
 
 export const THEME_PRESETS: { name: string; description: string; theme: Partial<PresentationTheme> }[] = [
