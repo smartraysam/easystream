@@ -42,6 +42,9 @@ export const AVAILABLE_BIBLE_VERSIONS: BibleVersionOption[] = [
   { id: 'DARBY', name: 'Darby Bible', category: 'Classic' },
   { id: 'DRA', name: 'Douay-Rheims', category: 'Catholic' },
   { id: 'YLT', name: "Young's Literal Translation", category: 'Literal' },
+  { id: 'GNT', name: 'Good News Translation', category: 'Modern' },
+  { id: 'TPT', name: 'The Passion Translation', category: 'Devotional' },
+  { id: 'YOR', name: 'Bibeli Mímọ́ (Yoruba)', category: 'African' },
 ];
 
 export const BIBLE_BOOKS: BibleBook[] = [

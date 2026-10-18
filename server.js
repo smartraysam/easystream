@@ -764,6 +764,9 @@ const BIBLE_VERSIONS = {
   BSB: { id: "BSB", name: "Berean Standard Bible", provider: "bolls" },
   TLV: { id: "TLV", name: "Tree of Life Version", provider: "bolls" },
   CEB: { id: "CEB", name: "Common English Bible", provider: "bolls" },
+  GNT: { id: "GNT", name: "Good News Translation", provider: "bolls" },
+  TPT: { id: "TPT", name: "The Passion Translation", provider: "local" },
+  YOR: { id: "YOR", name: "Bibeli Mímọ́ (Yoruba)", provider: "local" },
 };
 
 const BIBLE_BOOKS = [

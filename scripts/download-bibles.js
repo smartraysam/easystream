@@ -101,7 +101,10 @@ export const TARGET_VERSIONS = [
   { code: "NIRV", bollsCode: "NIRV", name: "New International Reader's Version", provider: "bolls" },
   { code: "BSB", bollsCode: "BSB", name: "Berean Standard Bible", provider: "bolls" },
   { code: "TLV", bollsCode: "TLV", name: "Tree of Life Version", provider: "bolls" },
-  { code: "CEB", bollsCode: "CEB", name: "Common English Bible", provider: "bolls" }
+  { code: "CEB", bollsCode: "CEB", name: "Common English Bible", provider: "bolls" },
+  { code: "GNT", bollsCode: "GNT", name: "Good News Translation", provider: "bolls" },
+  { code: "TPT", bollsCode: "TPT", name: "The Passion Translation", provider: "local" },
+  { code: "YOR", bollsCode: "YOR", name: "Bibeli Mímọ́ (Yoruba)", provider: "local" }
 ];
 
 async function sleep(ms) {
