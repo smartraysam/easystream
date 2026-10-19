@@ -283,12 +283,13 @@ export const ScheduleItemEditorModal: React.FC<ScheduleItemEditorModalProps> = (
     >
       <div
         style={{
-          width: '100%',
-          maxWidth: '920px',
-          maxHeight: '90vh',
+          width: '95vw',
+          maxWidth: '1240px',
+          height: '88vh',
+          maxHeight: '880px',
           background: 'linear-gradient(145deg, #0d1322 0%, #080d1a 100%)',
           border: '1px solid rgba(255, 255, 255, 0.12)',
-          borderRadius: '12px',
+          borderRadius: '14px',
           boxShadow: '0 25px 60px rgba(0, 0, 0, 0.85), 0 0 0 1px rgba(255, 255, 255, 0.05)',
           display: 'flex',
           flexDirection: 'column',
@@ -299,7 +300,7 @@ export const ScheduleItemEditorModal: React.FC<ScheduleItemEditorModalProps> = (
         {/* Header */}
         <div
           style={{
-            padding: '14px 20px',
+            padding: '16px 24px',
             background: 'rgba(15, 23, 42, 0.75)',
             borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
             display: 'flex',
@@ -618,13 +619,13 @@ export const ScheduleItemEditorModal: React.FC<ScheduleItemEditorModalProps> = (
                 style={{
                   width: '100%',
                   boxSizing: 'border-box',
-                  minHeight: '220px',
+                  minHeight: '280px',
                   flex: 1,
                   background: 'rgba(15, 23, 42, 0.9)',
                   border: '1px solid rgba(255, 255, 255, 0.12)',
                   borderRadius: '6px',
-                  padding: '10px 12px',
-                  fontSize: '12px',
+                  padding: '12px 14px',
+                  fontSize: '13px',
                   fontFamily: 'inherit',
                   lineHeight: '1.6',
                   color: '#e2e8f0',
