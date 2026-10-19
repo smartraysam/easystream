@@ -29,7 +29,8 @@ import {
   TextFontStyle, 
   TextAlignment, 
   VerticalAlignment,
-  TimerState 
+  TimerState,
+  ScheduleCategory 
 } from '../types';
 import { DEFAULT_SCRIPTURE_FORMATTING, DEFAULT_LYRICS_FORMATTING } from '../data/defaults';
 
@@ -41,7 +42,7 @@ interface FormatSettingsModalProps {
   onUpdateTheme: (theme: Partial<PresentationTheme>) => void;
   onSetTimerConfig?: (config: Partial<TimerState>) => void;
   initialTab?: 'scripture' | 'lyrics' | 'layout' | 'general';
-  activeCategory?: 'scripture' | 'song' | 'hymn' | 'announcement' | 'custom';
+  activeCategory?: ScheduleCategory;
   sampleTitle?: string;
   sampleVerse?: string;
 }

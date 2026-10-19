@@ -22,6 +22,9 @@ import {
   Radio,
   Bookmark,
   Edit,
+  Flame,
+  Mic2,
+  Megaphone,
 } from "lucide-react";
 import {
   AppState,
@@ -29,6 +32,7 @@ import {
   LibraryItem,
   PresentationTheme,
   ScheduleItem,
+  ScheduleCategory,
 } from "../types";
 import { DEFAULT_SCHEDULES } from "../data/defaults";
 import {
@@ -40,6 +44,7 @@ import {
 import { parseLyricsToSlides } from "../utils/lyricParser";
 import { OnlineSongResult, DEFAULT_WORSHIP_SONG } from "./V2Presenter";
 import { POPULAR_WORSHIP_SONGS } from "../data/popularWorshipSongs";
+import { ScheduleItemEditorModal } from "./ScheduleItemEditorModal";
 
 export interface OnlineScriptureVerse {
   verse: number;
@@ -129,6 +134,11 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [scheduleFeedback, setScheduleFeedback] = useState<string | null>(null);
 
+  // Schedule Item Editor Modal State (Add & Edit)
+  const [isScheduleEditorOpen, setIsScheduleEditorOpen] = useState(false);
+  const [editingScheduleItem, setEditingScheduleItem] = useState<ScheduleItem | null>(null);
+  const [scheduleModalDefaultCategory, setScheduleModalDefaultCategory] = useState<ScheduleCategory>("custom");
+
   const showScheduleAlert = (msg: string) => {
     setScheduleFeedback(msg);
     setTimeout(() => setScheduleFeedback(null), 2500);
@@ -137,7 +147,7 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
   // Add Item to Schedule
   const handleAddItemToSchedule = (item: {
     title: string;
-    category: "scripture" | "song" | "hymn" | "custom";
+    category: ScheduleCategory;
     lines: string[];
     author?: string;
   }) => {
@@ -162,6 +172,72 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
       });
     }
     showScheduleAlert(`Added "${item.title}" to schedule`);
+  };
+
+  // Save / Update Item from Schedule Item Modal
+  const handleSaveScheduleEditorItem = (item: ScheduleItem) => {
+    const exists = currentScheduleItems.some((i) => i.id === item.id);
+    let updatedList: ScheduleItem[];
+    if (exists) {
+      updatedList = currentScheduleItems.map((i) => (i.id === item.id ? item : i));
+      showScheduleAlert(`Updated "${item.title}"`);
+    } else {
+      updatedList = [...currentScheduleItems, item];
+      showScheduleAlert(`Added "${item.title}" to schedule`);
+    }
+
+    if (onUpdateSchedule) {
+      onUpdateSchedule(updatedList);
+    } else if (onAddToSchedule && !exists) {
+      onAddToSchedule({
+        id: item.id,
+        title: item.title,
+        category: item.category,
+        content: item.lines.join("\n\n"),
+        lines: item.lines,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      });
+    }
+
+    // Select and update preview immediately
+    setSelectedScheduleId(item.id);
+    setPreviewItem({
+      id: item.id,
+      title: item.title,
+      category: item.category,
+      lines: item.lines,
+      cur: 0,
+    });
+  };
+
+  // Save & Go Live directly from Schedule Item Modal
+  const handleScheduleEditorGoLive = (item: ScheduleItem) => {
+    const subtitle =
+      item.category === "song"
+        ? "Worship"
+        : item.category === "prayer"
+        ? "Prayer"
+        : item.category === "ministration"
+        ? "Ministration"
+        : item.category === "announcement"
+        ? "Announcement"
+        : item.category === "hymn"
+        ? "Hymn"
+        : "";
+
+    onSetLines(
+      item.title,
+      subtitle,
+      item.lines,
+      item.category as any,
+    );
+    onJumpTo(0);
+    if (state.liveState.isClearText) {
+      onUpdateLiveState({ isClearText: false });
+    }
+    setLiveFeedback(true);
+    setTimeout(() => setLiveFeedback(false), 2000);
   };
 
   // Remove Item from Schedule
@@ -1124,9 +1200,10 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
         {/* ----------------------------------------------------------- */}
         <div
           style={{
-            width: "270px",
-            minWidth: "240px",
-            maxWidth: "310px",
+            width: "400px",
+            minWidth: "400px",
+            maxWidth: "400px",
+            flexShrink: 0,
             borderRight: "1px solid rgba(255, 255, 255, 0.08)",
             display: "flex",
             flexDirection: "column",
@@ -1211,18 +1288,20 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                     borderRadius: "6px",
                     boxShadow: "0 10px 25px rgba(0, 0, 0, 0.7)",
                     zIndex: 60,
-                    minWidth: "165px",
+                    minWidth: "175px",
                     padding: "4px",
                     display: "flex",
                     flexDirection: "column",
                     gap: "2px",
                   }}
                 >
+                  {/* Custom Item */}
                   <button
                     onClick={() => {
                       setShowAddMenu(false);
-                      setActiveTab("scriptures");
-                      setTimeout(() => searchInputRef.current?.focus(), 50);
+                      setEditingScheduleItem(null);
+                      setScheduleModalDefaultCategory("custom");
+                      setIsScheduleEditorOpen(true);
                     }}
                     style={{
                       display: "flex",
@@ -1232,21 +1311,27 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                       borderRadius: "4px",
                       background: "transparent",
                       border: "none",
-                      color: "#38bdf8",
+                      color: "#34d399",
                       fontSize: "11px",
                       fontWeight: 600,
                       cursor: "pointer",
                       textAlign: "left",
+                      transition: "background 0.12s ease",
                     }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(52, 211, 153, 0.12)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                   >
-                    <BookOpen size={12} />
-                    <span>Search Scripture</span>
+                    <Layers size={12} />
+                    <span>Custom Item...</span>
                   </button>
 
+                  {/* Prayer */}
                   <button
                     onClick={() => {
                       setShowAddMenu(false);
-                      setActiveTab("songs");
+                      setEditingScheduleItem(null);
+                      setScheduleModalDefaultCategory("prayer");
+                      setIsScheduleEditorOpen(true);
                     }}
                     style={{
                       display: "flex",
@@ -1256,17 +1341,111 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                       borderRadius: "4px",
                       background: "transparent",
                       border: "none",
-                      color: "#a855f7",
+                      color: "#818cf8",
                       fontSize: "11px",
                       fontWeight: 600,
                       cursor: "pointer",
                       textAlign: "left",
+                      transition: "background 0.12s ease",
                     }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(129, 140, 248, 0.12)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                   >
-                    <Music size={12} />
-                    <span>Search Song</span>
+                    <Flame size={12} />
+                    <span>Prayer...</span>
                   </button>
 
+                  {/* Ministration */}
+                  <button
+                    onClick={() => {
+                      setShowAddMenu(false);
+                      setEditingScheduleItem(null);
+                      setScheduleModalDefaultCategory("ministration");
+                      setIsScheduleEditorOpen(true);
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "6px 8px",
+                      borderRadius: "4px",
+                      background: "transparent",
+                      border: "none",
+                      color: "#f472b6",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      textAlign: "left",
+                      transition: "background 0.12s ease",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(244, 114, 182, 0.12)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                  >
+                    <Mic2 size={12} />
+                    <span>Ministration...</span>
+                  </button>
+
+                  {/* Announcement */}
+                  <button
+                    onClick={() => {
+                      setShowAddMenu(false);
+                      setEditingScheduleItem(null);
+                      setScheduleModalDefaultCategory("announcement");
+                      setIsScheduleEditorOpen(true);
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "6px 8px",
+                      borderRadius: "4px",
+                      background: "transparent",
+                      border: "none",
+                      color: "#fbbf24",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      textAlign: "left",
+                      transition: "background 0.12s ease",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(251, 191, 36, 0.12)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                  >
+                    <Megaphone size={12} />
+                    <span>Announcement...</span>
+                  </button>
+
+                  {/* Hymn */}
+                  <button
+                    onClick={() => {
+                      setShowAddMenu(false);
+                      setEditingScheduleItem(null);
+                      setScheduleModalDefaultCategory("hymn");
+                      setIsScheduleEditorOpen(true);
+                    }}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "6px 8px",
+                      borderRadius: "4px",
+                      background: "transparent",
+                      border: "none",
+                      color: "#fb923c",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      cursor: "pointer",
+                      textAlign: "left",
+                      transition: "background 0.12s ease",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(251, 146, 60, 0.12)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                  >
+                    <Bookmark size={12} />
+                    <span>Hymn...</span>
+                  </button>
+
+                  {/* Blank Screen */}
                   <button
                     onClick={() => {
                       setShowAddMenu(false);
@@ -1289,44 +1468,13 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                       fontWeight: 600,
                       cursor: "pointer",
                       textAlign: "left",
+                      transition: "background 0.12s ease",
                     }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(148, 163, 184, 0.12)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                   >
                     <Tv size={12} />
                     <span>Blank Screen</span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setShowAddMenu(false);
-                      const title = prompt(
-                        "New Schedule Item Title:",
-                        "Opening Prayer",
-                      );
-                      if (title) {
-                        handleAddItemToSchedule({
-                          title,
-                          category: "custom",
-                          lines: [title],
-                        });
-                      }
-                    }}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                      padding: "6px 8px",
-                      borderRadius: "4px",
-                      background: "transparent",
-                      border: "none",
-                      color: "#10b981",
-                      fontSize: "11px",
-                      fontWeight: 600,
-                      cursor: "pointer",
-                      textAlign: "left",
-                    }}
-                  >
-                    <Plus size={12} />
-                    <span>Custom Item...</span>
                   </button>
                 </div>
               )}
@@ -1350,10 +1498,16 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                 item.category === "scripture"
                   ? "#38bdf8"
                   : item.category === "hymn"
-                  ? "#f59e0b"
+                  ? "#fb923c"
                   : item.category === "song"
-                  ? "#a855f7"
-                  : "#10b981";
+                  ? "#c084fc"
+                  : item.category === "prayer"
+                  ? "#818cf8"
+                  : item.category === "ministration"
+                  ? "#f472b6"
+                  : item.category === "announcement"
+                  ? "#fbbf24"
+                  : "#34d399";
 
               return (
                 <div
@@ -1384,9 +1538,21 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                       onSetLines("BLANK SCREEN", "", [""], "custom");
                       onJumpTo(0);
                     } else {
+                      const subtitle =
+                        item.category === "song"
+                          ? "Worship"
+                          : item.category === "prayer"
+                          ? "Prayer"
+                          : item.category === "ministration"
+                          ? "Ministration"
+                          : item.category === "announcement"
+                          ? "Announcement"
+                          : item.category === "hymn"
+                          ? "Hymn"
+                          : "";
                       onSetLines(
                         item.title,
-                        item.category === "song" ? "Worship" : "",
+                        subtitle,
                         item.lines,
                         item.category as any,
                       );
@@ -1431,7 +1597,21 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                       justifyContent: "center",
                     }}
                   >
-                    <Tv size={11} color={isSelected ? "#38bdf8" : "#64748b"} />
+                    {item.category === "prayer" ? (
+                      <Flame size={11} color={isSelected ? "#818cf8" : catColor} />
+                    ) : item.category === "ministration" ? (
+                      <Mic2 size={11} color={isSelected ? "#f472b6" : catColor} />
+                    ) : item.category === "announcement" ? (
+                      <Megaphone size={11} color={isSelected ? "#fbbf24" : catColor} />
+                    ) : item.category === "hymn" ? (
+                      <Bookmark size={11} color={isSelected ? "#fb923c" : catColor} />
+                    ) : item.category === "song" ? (
+                      <Music size={11} color={isSelected ? "#c084fc" : catColor} />
+                    ) : item.category === "scripture" ? (
+                      <BookOpen size={11} color={isSelected ? "#38bdf8" : catColor} />
+                    ) : (
+                      <Tv size={11} color={isSelected ? "#38bdf8" : "#64748b"} />
+                    )}
                   </div>
 
                   {/* Title & Notes */}
@@ -1482,6 +1662,43 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                       </span>
                     </div>
                   </div>
+
+                  {/* Edit Item in Schedule */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingScheduleItem(item);
+                      setScheduleModalDefaultCategory(item.category || "custom");
+                      setIsScheduleEditorOpen(true);
+                    }}
+                    title="Edit Schedule Item"
+                    style={{
+                      background: "transparent",
+                      border: "none",
+                      color: "#64748b",
+                      cursor: "pointer",
+                      padding: "4px",
+                      borderRadius: "4px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      opacity: 0.7,
+                      transition: "all 0.12s ease",
+                      flexShrink: 0,
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.color = "#38bdf8";
+                      e.currentTarget.style.background = "rgba(56, 189, 248, 0.15)";
+                      e.currentTarget.style.opacity = "1";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.color = "#64748b";
+                      e.currentTarget.style.background = "transparent";
+                      e.currentTarget.style.opacity = "0.7";
+                    }}
+                  >
+                    <Edit size={12} />
+                  </button>
 
                   {/* Remove Item from Schedule */}
                   <button
@@ -2511,9 +2728,10 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
             {/* Left Sub-Column: Search & Version Selector */}
             <div
               style={{
-                width: "250px",
-                minWidth: "220px",
-                maxWidth: "270px",
+                width: "400px",
+                minWidth: "400px",
+                maxWidth: "400px",
+                flexShrink: 0,
                 borderRight: "1px solid rgba(255, 255, 255, 0.08)",
                 background: "rgba(15, 23, 42, 0.75)",
                 display: "flex",
@@ -2979,9 +3197,18 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                           <Check size={9} color="#ffffff" strokeWidth={3} />
                         )}
                       </div>
-                      <span style={{ flex: 1 }}>{v.id}</span>
-                      <span style={{ fontSize: "10px", color: "#64748b" }}>
-                        {v.name.slice(0, 14)}
+                      <span style={{ flex: 1, fontWeight: isSelected ? 800 : 600 }}>{v.id}</span>
+                      <span
+                        style={{
+                          fontSize: "10.5px",
+                          color: isSelected ? "#93c5fd" : "#64748b",
+                          maxWidth: "240px",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {v.name}
                       </span>
                     </div>
                   );
@@ -3490,9 +3717,10 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
             {/* Left Sub-Column: Song Search & Catalog */}
             <div
               style={{
-                width: "290px",
-                minWidth: "270px",
-                maxWidth: "320px",
+                width: "400px",
+                minWidth: "400px",
+                maxWidth: "400px",
+                flexShrink: 0,
                 borderRight: "1px solid rgba(255, 255, 255, 0.08)",
                 background: "rgba(15, 23, 42, 0.75)",
                 display: "flex",
@@ -4775,6 +5003,16 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
           </div>
         )}
       </div>
+
+      {/* Schedule Item Editor Modal (Add & Edit Custom/Prayer/Ministration/Announcement/Hymn) */}
+      <ScheduleItemEditorModal
+        isOpen={isScheduleEditorOpen}
+        onClose={() => setIsScheduleEditorOpen(false)}
+        initialItem={editingScheduleItem}
+        defaultCategory={scheduleModalDefaultCategory}
+        onSave={handleSaveScheduleEditorItem}
+        onSaveAndGoLive={handleScheduleEditorGoLive}
+      />
     </div>
   );
 };

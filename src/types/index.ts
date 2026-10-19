@@ -91,10 +91,19 @@ export interface LyricsFormatting {
   verticalAlign: VerticalAlignment;
 }
 
+export type ScheduleCategory =
+  | 'scripture'
+  | 'song'
+  | 'hymn'
+  | 'prayer'
+  | 'ministration'
+  | 'announcement'
+  | 'custom';
+
 export interface LibraryItem {
   id: string;
   title: string;
-  category: 'scripture' | 'song' | 'hymn' | 'announcement' | 'custom';
+  category: ScheduleCategory;
   author?: string;
   copyright?: string;
   ccli?: string;
@@ -109,7 +118,7 @@ export interface ScheduleItem {
   id: string;
   libraryItemId?: string;
   title: string;
-  category: 'scripture' | 'song' | 'hymn' | 'announcement' | 'custom';
+  category: ScheduleCategory;
   lines: string[];
   themeOverride?: Partial<PresentationTheme>;
 }
@@ -166,7 +175,7 @@ export interface TimerState {
 export interface AppState {
   title: string;
   subtitle?: string;
-  category: 'scripture' | 'song' | 'hymn' | 'announcement' | 'custom';
+  category: ScheduleCategory;
   lines: string[];
   cur: number;
   playing: boolean;
@@ -201,7 +210,7 @@ export interface SessionMeta {
 }
 
 export type WebSocketClientMessage =
-  | { type: 'setLines'; title: string; subtitle?: string; lines: string[]; category?: 'scripture' | 'song' | 'hymn' | 'announcement' | 'custom' }
+  | { type: 'setLines'; title: string; subtitle?: string; lines: string[]; category?: ScheduleCategory }
   | { type: 'jump'; index: number }
   | { type: 'play' }
   | { type: 'pause' }
