@@ -2,7 +2,10 @@
 dist/
 node_modules/
 .env
+temp_auto_push.bat
 .env.local
 data/store.json
 store.json
 **/store.json
+.gitignore
+branch_structure.json

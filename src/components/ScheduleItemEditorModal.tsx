@@ -30,7 +30,7 @@ export interface ScheduleItemEditorModalProps {
 interface CategoryOption {
   key: ScheduleCategory;
   label: string;
-  icon: React.FC<{ size?: number; color?: string; className?: string }>;
+  icon: React.FC<{ size?: number; color?: string; className?: string; style?: React.CSSProperties }>;
   color: string;
   bgActive: string;
   borderColor: string;
