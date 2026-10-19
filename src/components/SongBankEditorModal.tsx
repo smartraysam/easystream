@@ -10,7 +10,6 @@ import {
   Check,
   ClipboardPaste,
   Layers,
-  Type,
   FileText,
   AlertCircle,
 } from 'lucide-react';

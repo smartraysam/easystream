@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Type, 
   BookOpen, 
   Music2, 
   Tv, 
@@ -18,10 +17,13 @@ import {
   Sparkles,
   ArrowUp,
   MoveVertical,
-  ArrowDown
+  ArrowDown,
+  Layout,
+  Tv2
 } from 'lucide-react';
 import { 
   PresentationTheme, 
+  PresenterLayout,
   ScriptureFormatting, 
   LyricsFormatting, 
   TextFontStyle, 
@@ -38,7 +40,7 @@ interface FormatSettingsModalProps {
   timerState?: TimerState;
   onUpdateTheme: (theme: Partial<PresentationTheme>) => void;
   onSetTimerConfig?: (config: Partial<TimerState>) => void;
-  initialTab?: 'scripture' | 'lyrics' | 'general';
+  initialTab?: 'scripture' | 'lyrics' | 'layout' | 'general';
   activeCategory?: 'scripture' | 'song' | 'hymn' | 'announcement' | 'custom';
   sampleTitle?: string;
   sampleVerse?: string;
@@ -81,7 +83,7 @@ export const FormatSettingsModal: React.FC<FormatSettingsModalProps> = ({
   sampleTitle,
   sampleVerse,
 }) => {
-  const [activeTab, setActiveTab] = useState<'scripture' | 'lyrics' | 'general'>(initialTab);
+  const [activeTab, setActiveTab] = useState<'scripture' | 'lyrics' | 'layout' | 'general'>(initialTab);
 
   // Update active tab when initialTab changes
   useEffect(() => {
@@ -116,6 +118,23 @@ export const FormatSettingsModal: React.FC<FormatSettingsModalProps> = ({
     ...(theme.lyrics || {}),
   };
 
+  // Active Layout with safe defaults
+  const currentLayout: PresenterLayout =
+    theme.presenterLayout ||
+    (localStorage.getItem('easypresenter_workspace_layout') as PresenterLayout) ||
+    'easyworship';
+
+  const handleSelectLayout = (layout: PresenterLayout) => {
+    localStorage.setItem('easypresenter_workspace_layout', layout);
+    onUpdateTheme({ presenterLayout: layout });
+    const isV2Path = window.location.pathname.startsWith('/v2');
+    if (layout === 'classic' && isV2Path) {
+      window.location.href = '/';
+    } else if ((layout === 'easyworship' || layout === 'quickdeck') && !isV2Path && window.location.pathname === '/') {
+      window.location.href = '/v2';
+    }
+  };
+
   // Updaters
   const updateScripture = (patch: Partial<ScriptureFormatting>) => {
     onUpdateTheme({
@@ -140,6 +159,8 @@ export const FormatSettingsModal: React.FC<FormatSettingsModalProps> = ({
       onUpdateTheme({ scripture: DEFAULT_SCRIPTURE_FORMATTING });
     } else if (activeTab === 'lyrics') {
       onUpdateTheme({ lyrics: DEFAULT_LYRICS_FORMATTING });
+    } else if (activeTab === 'layout') {
+      handleSelectLayout('easyworship');
     } else if (activeTab === 'general') {
       onSetTimerConfig?.({ fontSizeScale: 100 });
       onUpdateTheme({
@@ -310,6 +331,7 @@ export const FormatSettingsModal: React.FC<FormatSettingsModalProps> = ({
           </button>
 
           <button
+            id="settings-tab-lyrics"
             onClick={() => setActiveTab('lyrics')}
             style={{
               display: 'flex',
@@ -334,6 +356,32 @@ export const FormatSettingsModal: React.FC<FormatSettingsModalProps> = ({
           </button>
 
           <button
+            id="settings-tab-layout"
+            onClick={() => setActiveTab('layout')}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '9px 18px',
+              borderRadius: '999px',
+              border: activeTab === 'layout' ? '1.5px solid #10b981' : '1px solid rgba(255, 255, 255, 0.08)',
+              background: activeTab === 'layout'
+                ? 'linear-gradient(135deg, rgba(16, 185, 129, 0.25) 0%, rgba(5, 150, 105, 0.15) 100%)'
+                : 'rgba(255, 255, 255, 0.04)',
+              color: activeTab === 'layout' ? '#34d399' : '#94a3b8',
+              fontSize: '12.5px',
+              fontWeight: 800,
+              cursor: 'pointer',
+              transition: 'all 0.15s ease',
+              boxShadow: activeTab === 'layout' ? '0 0 16px rgba(16, 185, 129, 0.25)' : 'none',
+            }}
+          >
+            <Layout size={15} />
+            <span>Workspace Layout</span>
+          </button>
+
+          <button
+            id="settings-tab-general"
             onClick={() => setActiveTab('general')}
             style={{
               display: 'flex',
@@ -1870,10 +1918,736 @@ export const FormatSettingsModal: React.FC<FormatSettingsModalProps> = ({
           )}
 
           {/* ========================================================== */}
+          {/* TAB: WORKSPACE LAYOUT SWITCHER                             */}
+          {/* ========================================================== */}
+          {activeTab === 'layout' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {/* Header Banner */}
+              <div
+                style={{
+                  background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.12) 0%, rgba(14, 165, 233, 0.06) 100%)',
+                  padding: '16px 20px',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(16, 185, 129, 0.3)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '16px',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                    <Layout size={18} color="#34d399" />
+                    <h3 style={{ margin: 0, fontSize: '15px', fontWeight: 800, color: '#f8fafc' }}>
+                      Presenter Workspace Layout
+                    </h3>
+                    <span
+                      style={{
+                        padding: '2px 8px',
+                        borderRadius: '999px',
+                        background: 'rgba(16, 185, 129, 0.2)',
+                        color: '#34d399',
+                        fontSize: '10px',
+                        fontWeight: 800,
+                        textTransform: 'uppercase',
+                        letterSpacing: '0.05em',
+                      }}
+                    >
+                      Instant Switch
+                    </span>
+                  </div>
+                  <p style={{ margin: 0, fontSize: '12px', color: '#94a3b8', lineHeight: 1.5 }}>
+                    Select your preferred operator interface. You can switch between the EasyWorship dual-monitor broadcast layout and the previous streamlined stream deck at any time.
+                  </p>
+                </div>
+
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    background: 'rgba(0, 0, 0, 0.45)',
+                    padding: '8px 14px',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    fontSize: '11.5px',
+                    color: '#cbd5e1',
+                  }}
+                >
+                  <span>Active Workspace:</span>
+                  <strong style={{ color: currentLayout === 'easyworship' ? '#38bdf8' : currentLayout === 'quickdeck' ? '#c084fc' : '#f59e0b' }}>
+                    {currentLayout === 'easyworship'
+                      ? 'EasyWorship Dual Monitor (3-Col)'
+                      : currentLayout === 'quickdeck'
+                      ? 'Stream Deck (Previous UI)'
+                      : 'Classic Studio 1.0'}
+                  </strong>
+                </div>
+              </div>
+
+              {/* Cards Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(310px, 1fr))', gap: '16px' }}>
+                {/* 1. EasyWorship 3-Column */}
+                <div
+                  id="layout-card-easyworship"
+                  onClick={() => handleSelectLayout('easyworship')}
+                  style={{
+                    padding: '20px',
+                    borderRadius: '14px',
+                    background: currentLayout === 'easyworship'
+                      ? 'linear-gradient(135deg, rgba(56, 189, 248, 0.12) 0%, rgba(15, 23, 42, 0.75) 100%)'
+                      : 'rgba(255, 255, 255, 0.025)',
+                    border: currentLayout === 'easyworship'
+                      ? '2px solid #38bdf8'
+                      : '1px solid rgba(255, 255, 255, 0.08)',
+                    boxShadow: currentLayout === 'easyworship'
+                      ? '0 0 25px rgba(56, 189, 248, 0.22)'
+                      : 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.18s ease',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    position: 'relative',
+                  }}
+                >
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div
+                          style={{
+                            width: '36px',
+                            height: '36px',
+                            borderRadius: '8px',
+                            background: 'linear-gradient(135deg, #0284c7 0%, #0369a1 100%)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: '0 0 12px rgba(2, 132, 199, 0.35)',
+                          }}
+                        >
+                          <Tv2 size={20} color="#ffffff" />
+                        </div>
+                        <div>
+                          <h4 style={{ margin: 0, fontSize: '14.5px', fontWeight: 800, color: '#ffffff' }}>
+                            EasyWorship Broadcast Studio
+                          </h4>
+                          <span style={{ fontSize: '11px', color: '#38bdf8', fontWeight: 700 }}>
+                            3-Column Dual Monitors
+                          </span>
+                        </div>
+                      </div>
+
+                      {currentLayout === 'easyworship' ? (
+                        <span
+                          style={{
+                            padding: '3px 8px',
+                            borderRadius: '999px',
+                            background: '#0284c7',
+                            color: '#ffffff',
+                            fontSize: '10px',
+                            fontWeight: 800,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <Check size={11} /> ACTIVE
+                        </span>
+                      ) : (
+                        <span
+                          style={{
+                            padding: '3px 8px',
+                            borderRadius: '999px',
+                            background: 'rgba(255, 255, 255, 0.08)',
+                            color: '#94a3b8',
+                            fontSize: '10px',
+                            fontWeight: 700,
+                          }}
+                        >
+                          Select
+                        </span>
+                      )}
+                    </div>
+
+                    <p style={{ margin: '0 0 14px 0', fontSize: '12px', color: '#94a3b8', lineHeight: 1.5 }}>
+                      Full broadcast workflow with resource library on the left, live cueing & preview monitor in the middle, and live broadcast monitor on the right.
+                    </p>
+
+                    {/* Mini Wireframe Mockup */}
+                    <div
+                      style={{
+                        height: '75px',
+                        background: '#090d16',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(255, 255, 255, 0.08)',
+                        padding: '6px',
+                        display: 'flex',
+                        gap: '5px',
+                        marginBottom: '14px',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: '28%',
+                          background: 'rgba(56, 189, 248, 0.1)',
+                          border: '1px solid rgba(56, 189, 248, 0.25)',
+                          borderRadius: '4px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          padding: '4px',
+                          gap: '3px',
+                        }}
+                      >
+                        <div style={{ height: '6px', background: 'rgba(56, 189, 248, 0.4)', borderRadius: '2px' }} />
+                        <div style={{ height: '4px', background: 'rgba(255, 255, 255, 0.1)', borderRadius: '2px' }} />
+                        <div style={{ height: '4px', background: 'rgba(255, 255, 255, 0.1)', borderRadius: '2px' }} />
+                        <span style={{ fontSize: '7.5px', color: '#38bdf8', marginTop: 'auto', fontWeight: 700 }}>LIBRARY</span>
+                      </div>
+                      <div
+                        style={{
+                          flex: 1,
+                          background: 'rgba(16, 185, 129, 0.1)',
+                          border: '1px solid rgba(16, 185, 129, 0.25)',
+                          borderRadius: '4px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          padding: '4px',
+                          gap: '3px',
+                        }}
+                      >
+                        <div style={{ height: '28px', background: 'rgba(0, 0, 0, 0.5)', borderRadius: '3px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                          <span style={{ fontSize: '7px', color: '#34d399', fontWeight: 800 }}>PREVIEW</span>
+                        </div>
+                        <div style={{ height: '4px', background: 'rgba(255, 255, 255, 0.1)', borderRadius: '2px' }} />
+                        <span style={{ fontSize: '7.5px', color: '#34d399', marginTop: 'auto', fontWeight: 700 }}>CUE / SET</span>
+                      </div>
+                      <div
+                        style={{
+                          width: '36%',
+                          background: 'rgba(239, 68, 68, 0.12)',
+                          border: '1px solid rgba(239, 68, 68, 0.3)',
+                          borderRadius: '4px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          padding: '4px',
+                          gap: '3px',
+                        }}
+                      >
+                        <div style={{ height: '28px', background: '#0284c7', borderRadius: '3px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 6px rgba(2, 132, 199, 0.5)' }}>
+                          <span style={{ fontSize: '7px', color: '#ffffff', fontWeight: 900 }}>LIVE OUTPUT</span>
+                        </div>
+                        <span style={{ fontSize: '7.5px', color: '#ef4444', marginTop: 'auto', fontWeight: 800 }}>ON AIR</span>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                      <span style={{ fontSize: '11px', color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Check size={12} color="#38bdf8" /> Dual live & preview monitors side-by-side
+                      </span>
+                      <span style={{ fontSize: '11px', color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Check size={12} color="#38bdf8" /> Integrated schedule sets, songs & scriptures
+                      </span>
+                      <span style={{ fontSize: '11px', color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Check size={12} color="#38bdf8" /> 1-Click "Go Live" or double-click to project
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSelectLayout('easyworship');
+                    }}
+                    style={{
+                      marginTop: '16px',
+                      padding: '8px 14px',
+                      borderRadius: '8px',
+                      background: currentLayout === 'easyworship' ? '#0284c7' : 'rgba(255, 255, 255, 0.08)',
+                      border: 'none',
+                      color: '#ffffff',
+                      fontSize: '12px',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    {currentLayout === 'easyworship' ? <Check size={13} /> : null}
+                    <span>{currentLayout === 'easyworship' ? 'Currently Selected' : 'Activate EasyWorship Layout'}</span>
+                  </button>
+                </div>
+
+                {/* 2. Stream Deck / Quick Presenter (Previous UI) */}
+                <div
+                  id="layout-card-quickdeck"
+                  onClick={() => handleSelectLayout('quickdeck')}
+                  style={{
+                    padding: '20px',
+                    borderRadius: '14px',
+                    background: currentLayout === 'quickdeck'
+                      ? 'linear-gradient(135deg, rgba(168, 85, 247, 0.15) 0%, rgba(15, 23, 42, 0.75) 100%)'
+                      : 'rgba(255, 255, 255, 0.025)',
+                    border: currentLayout === 'quickdeck'
+                      ? '2px solid #a855f7'
+                      : '1px solid rgba(255, 255, 255, 0.08)',
+                    boxShadow: currentLayout === 'quickdeck'
+                      ? '0 0 25px rgba(168, 85, 247, 0.22)'
+                      : 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.18s ease',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    position: 'relative',
+                  }}
+                >
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div
+                          style={{
+                            width: '36px',
+                            height: '36px',
+                            borderRadius: '8px',
+                            background: 'linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: '0 0 12px rgba(139, 92, 246, 0.35)',
+                          }}
+                        >
+                          <Sparkles size={20} color="#ffffff" />
+                        </div>
+                        <div>
+                          <h4 style={{ margin: 0, fontSize: '14.5px', fontWeight: 800, color: '#ffffff' }}>
+                            Stream Deck / Quick Presenter
+                          </h4>
+                          <span style={{ fontSize: '11px', color: '#c084fc', fontWeight: 700 }}>
+                            Previous UI • Rapid 2-Column Deck
+                          </span>
+                        </div>
+                      </div>
+
+                      {currentLayout === 'quickdeck' ? (
+                        <span
+                          style={{
+                            padding: '3px 8px',
+                            borderRadius: '999px',
+                            background: '#8b5cf6',
+                            color: '#ffffff',
+                            fontSize: '10px',
+                            fontWeight: 800,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <Check size={11} /> ACTIVE
+                        </span>
+                      ) : (
+                        <span
+                          style={{
+                            padding: '3px 8px',
+                            borderRadius: '999px',
+                            background: 'rgba(255, 255, 255, 0.08)',
+                            color: '#94a3b8',
+                            fontSize: '10px',
+                            fontWeight: 700,
+                          }}
+                        >
+                          Select
+                        </span>
+                      )}
+                    </div>
+
+                    <p style={{ margin: '0 0 14px 0', fontSize: '12px', color: '#94a3b8', lineHeight: 1.5 }}>
+                      The previous streamlined 2-column layout with quick Scripture/Lyrics tab switcher, prominent search bar, fast slide breakdown deck, and right live screen.
+                    </p>
+
+                    {/* Mini Wireframe Mockup */}
+                    <div
+                      style={{
+                        height: '75px',
+                        background: '#090d16',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(255, 255, 255, 0.08)',
+                        padding: '6px',
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '4px',
+                        marginBottom: '14px',
+                      }}
+                    >
+                      <div style={{ height: '10px', background: 'rgba(139, 92, 246, 0.25)', borderRadius: '3px', border: '1px solid rgba(139, 92, 246, 0.4)', display: 'flex', alignItems: 'center', padding: '0 4px' }}>
+                        <span style={{ fontSize: '6.5px', color: '#c084fc', fontWeight: 800 }}>SEARCH & MODE TABS</span>
+                      </div>
+                      <div style={{ flex: 1, display: 'flex', gap: '5px' }}>
+                        <div
+                          style={{
+                            flex: 1.3,
+                            background: 'rgba(255, 255, 255, 0.04)',
+                            border: '1px solid rgba(255, 255, 255, 0.1)',
+                            borderRadius: '4px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            padding: '3px',
+                            gap: '2px',
+                          }}
+                        >
+                          <div style={{ height: '5px', background: '#8b5cf6', borderRadius: '2px', width: '60%' }} />
+                          <div style={{ height: '4px', background: 'rgba(255, 255, 255, 0.12)', borderRadius: '2px' }} />
+                          <div style={{ height: '4px', background: 'rgba(255, 255, 255, 0.08)', borderRadius: '2px' }} />
+                          <span style={{ fontSize: '7px', color: '#c084fc', marginTop: 'auto', fontWeight: 700 }}>SLIDE BREAKDOWN DECK</span>
+                        </div>
+                        <div
+                          style={{
+                            flex: 1,
+                            background: 'rgba(56, 189, 248, 0.12)',
+                            border: '1px solid rgba(56, 189, 248, 0.3)',
+                            borderRadius: '4px',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <span style={{ fontSize: '7px', color: '#38bdf8', fontWeight: 800 }}>LIVE PREVIEW</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                      <span style={{ fontSize: '11px', color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Check size={12} color="#a855f7" /> Dedicated Scripture vs Lyric mode switcher
+                      </span>
+                      <span style={{ fontSize: '11px', color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Check size={12} color="#a855f7" /> Instant stanza split & verse cards with keyboard controls
+                      </span>
+                      <span style={{ fontSize: '11px', color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Check size={12} color="#a855f7" /> Ideal for solo operators, rapid lookups, and fast changes
+                      </span>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleSelectLayout('quickdeck');
+                    }}
+                    style={{
+                      marginTop: '16px',
+                      padding: '8px 14px',
+                      borderRadius: '8px',
+                      background: currentLayout === 'quickdeck' ? '#8b5cf6' : 'rgba(255, 255, 255, 0.08)',
+                      border: 'none',
+                      color: '#ffffff',
+                      fontSize: '12px',
+                      fontWeight: 800,
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: '6px',
+                      transition: 'all 0.15s ease',
+                    }}
+                  >
+                    {currentLayout === 'quickdeck' ? <Check size={13} /> : null}
+                    <span>{currentLayout === 'quickdeck' ? 'Currently Selected' : 'Activate Stream Deck (Previous UI)'}</span>
+                  </button>
+                </div>
+
+                {/* 3. Classic Studio 1.0 */}
+                <div
+                  id="layout-card-classic"
+                  onClick={() => handleSelectLayout('classic')}
+                  style={{
+                    padding: '20px',
+                    borderRadius: '14px',
+                    background: currentLayout === 'classic'
+                      ? 'linear-gradient(135deg, rgba(245, 158, 11, 0.15) 0%, rgba(15, 23, 42, 0.75) 100%)'
+                      : 'rgba(255, 255, 255, 0.025)',
+                    border: currentLayout === 'classic'
+                      ? '2px solid #f59e0b'
+                      : '1px solid rgba(255, 255, 255, 0.08)',
+                    boxShadow: currentLayout === 'classic'
+                      ? '0 0 25px rgba(245, 158, 11, 0.22)'
+                      : 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.18s ease',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    justifyContent: 'space-between',
+                    position: 'relative',
+                  }}
+                >
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '12px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <div
+                          style={{
+                            width: '36px',
+                            height: '36px',
+                            borderRadius: '8px',
+                            background: 'linear-gradient(135deg, #d97706 0%, #b45309 100%)',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: '0 0 12px rgba(217, 119, 6, 0.35)',
+                          }}
+                        >
+                          <Sliders size={20} color="#ffffff" />
+                        </div>
+                        <div>
+                          <h4 style={{ margin: 0, fontSize: '14.5px', fontWeight: 800, color: '#ffffff' }}>
+                            Classic EasyPresenter Studio
+                          </h4>
+                          <span style={{ fontSize: '11px', color: '#fbbf24', fontWeight: 700 }}>
+                            Version 1.0 • Setlist & Themes
+                          </span>
+                        </div>
+                      </div>
+
+                      {currentLayout === 'classic' ? (
+                        <span
+                          style={{
+                            padding: '3px 8px',
+                            borderRadius: '999px',
+                            background: '#d97706',
+                            color: '#ffffff',
+                            fontSize: '10px',
+                            fontWeight: 800,
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                          }}
+                        >
+                          <Check size={11} /> ACTIVE
+                        </span>
+                      ) : (
+                        <span
+                          style={{
+                            padding: '3px 8px',
+                            borderRadius: '999px',
+                            background: 'rgba(255, 255, 255, 0.08)',
+                            color: '#94a3b8',
+                            fontSize: '10px',
+                            fontWeight: 700,
+                          }}
+                        >
+                          Select
+                        </span>
+                      )}
+                    </div>
+
+                    <p style={{ margin: '0 0 14px 0', fontSize: '12px', color: '#94a3b8', lineHeight: 1.5 }}>
+                      The classic 3-column studio with left service setlist, center live console with WPM teleprompter transport, and right theme & styling editor.
+                    </p>
+
+                    {/* Mini Wireframe Mockup */}
+                    <div
+                      style={{
+                        height: '75px',
+                        background: '#090d16',
+                        borderRadius: '8px',
+                        border: '1px solid rgba(255, 255, 255, 0.08)',
+                        padding: '6px',
+                        display: 'flex',
+                        gap: '5px',
+                        marginBottom: '14px',
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: '30%',
+                          background: 'rgba(245, 158, 11, 0.1)',
+                          border: '1px solid rgba(245, 158, 11, 0.25)',
+                          borderRadius: '4px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          padding: '4px',
+                          gap: '2px',
+                        }}
+                      >
+                        <div style={{ height: '5px', background: '#f59e0b', borderRadius: '2px' }} />
+                        <span style={{ fontSize: '7px', color: '#fbbf24', marginTop: 'auto', fontWeight: 700 }}>SETLIST</span>
+                      </div>
+                      <div
+                        style={{
+                          flex: 1,
+                          background: 'rgba(255, 255, 255, 0.04)',
+                          border: '1px solid rgba(255, 255, 255, 0.1)',
+                          borderRadius: '4px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          padding: '4px',
+                          gap: '3px',
+                        }}
+                      >
+                        <div style={{ height: '26px', background: 'rgba(0, 0, 0, 0.5)', borderRadius: '3px' }} />
+                        <span style={{ fontSize: '7px', color: '#cbd5e1', marginTop: 'auto', fontWeight: 700 }}>LIVE CONSOLE</span>
+                      </div>
+                      <div
+                        style={{
+                          width: '30%',
+                          background: 'rgba(56, 189, 248, 0.1)',
+                          border: '1px solid rgba(56, 189, 248, 0.25)',
+                          borderRadius: '4px',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          padding: '4px',
+                          gap: '2px',
+                        }}
+                      >
+                        <span style={{ fontSize: '7px', color: '#38bdf8', marginTop: 'auto', fontWeight: 700 }}>STYLE EDITOR</span>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                      <span style={{ fontSize: '11px', color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Check size={12} color="#f59e0b" /> Service setlist & rundown management
+                      </span>
+                      <span style={{ fontSize: '11px', color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Check size={12} color="#f59e0b" /> Teleprompter auto-advance and WPM transport
+                      </span>
+                      <span style={{ fontSize: '11px', color: '#e2e8f0', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <Check size={12} color="#f59e0b" /> Real-time font, outline, and background inspector
+                      </span>
+                    </div>
+                  </div>
+
+                  <div style={{ marginTop: '16px', display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSelectLayout('classic');
+                      }}
+                      style={{
+                        flex: 1,
+                        padding: '8px 14px',
+                        borderRadius: '8px',
+                        background: currentLayout === 'classic' ? '#d97706' : 'rgba(255, 255, 255, 0.08)',
+                        border: 'none',
+                        color: '#ffffff',
+                        fontSize: '12px',
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: '6px',
+                        transition: 'all 0.15s ease',
+                      }}
+                    >
+                      {currentLayout === 'classic' ? <Check size={13} /> : null}
+                      <span>{currentLayout === 'classic' ? 'Currently Selected' : 'Activate Classic'}</span>
+                    </button>
+
+                    <a
+                      href="/"
+                      style={{
+                        padding: '8px 12px',
+                        borderRadius: '8px',
+                        background: 'rgba(245, 158, 11, 0.15)',
+                        border: '1px solid rgba(245, 158, 11, 0.3)',
+                        color: '#fbbf24',
+                        fontSize: '11px',
+                        fontWeight: 700,
+                        textDecoration: 'none',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        whiteSpace: 'nowrap',
+                      }}
+                      title="Open Classic Studio full page"
+                    >
+                      <Layout size={12} />
+                      <span>Open /</span>
+                    </a>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* ========================================================== */}
           {/* TAB 3: DISPLAY & TIMER SETTINGS                            */}
           {/* ========================================================== */}
           {activeTab === 'general' && (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+              {/* Layout Quick Card */}
+              <div
+                style={{
+                  background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(15, 23, 42, 0.4) 100%)',
+                  padding: '16px',
+                  borderRadius: '12px',
+                  border: '1px solid rgba(16, 185, 129, 0.25)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: '14px',
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <div
+                    style={{
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '8px',
+                      background: 'rgba(16, 185, 129, 0.2)',
+                      border: '1px solid rgba(16, 185, 129, 0.35)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      color: '#34d399',
+                    }}
+                  >
+                    <Layout size={18} />
+                  </div>
+                  <div>
+                    <div style={{ fontSize: '13px', fontWeight: 800, color: '#f8fafc' }}>
+                      Presenter Workspace Layout
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                      Currently active:{' '}
+                      <strong style={{ color: currentLayout === 'easyworship' ? '#38bdf8' : currentLayout === 'quickdeck' ? '#c084fc' : '#f59e0b' }}>
+                        {currentLayout === 'easyworship'
+                          ? 'EasyWorship Dual Monitor (3-Col)'
+                          : currentLayout === 'quickdeck'
+                          ? 'Stream Deck / Quick Presenter (Previous UI)'
+                          : 'Classic Studio 1.0'}
+                      </strong>
+                    </div>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => setActiveTab('layout')}
+                  style={{
+                    padding: '7px 14px',
+                    borderRadius: '8px',
+                    background: 'rgba(16, 185, 129, 0.18)',
+                    border: '1px solid rgba(16, 185, 129, 0.35)',
+                    color: '#34d399',
+                    fontSize: '11.5px',
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    transition: 'all 0.15s ease',
+                  }}
+                >
+                  <Layout size={13} />
+                  <span>Configure Layout...</span>
+                </button>
+              </div>
+
               {/* Countdown Timer Font Scale */}
               {timerState && (
                 <div
@@ -2116,7 +2890,7 @@ export const FormatSettingsModal: React.FC<FormatSettingsModalProps> = ({
             }}
           >
             <RotateCcw size={13} />
-            <span>Reset {activeTab === 'scripture' ? 'Scripture' : activeTab === 'lyrics' ? 'Lyrics' : 'Display'} to Defaults</span>
+            <span>Reset {activeTab === 'scripture' ? 'Scripture' : activeTab === 'lyrics' ? 'Lyrics' : activeTab === 'layout' ? 'Layout' : 'Display'} to Defaults</span>
           </button>
 
           <button

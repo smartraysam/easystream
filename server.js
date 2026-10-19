@@ -85,6 +85,7 @@ const DEFAULT_THEME = {
   showNextPreview: true,
   showProgressBar: true,
   showReferenceBadge: true,
+  presenterLayout: "easyworship",
   scripture: DEFAULT_SCRIPTURE_FORMATTING,
   lyrics: DEFAULT_LYRICS_FORMATTING,
 };

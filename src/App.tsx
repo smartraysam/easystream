@@ -15,6 +15,7 @@ import { SessionModal } from './components/SessionModal';
 import { V2Presenter } from './components/V2Presenter';
 import { FormatSettingsModal } from './components/FormatSettingsModal';
 import { LibraryItem, ScheduleItem } from './types';
+import { DEFAULT_SCHEDULES } from './data/defaults';
 
 export const App: React.FC = () => {
   const {
@@ -76,7 +77,13 @@ export const App: React.FC = () => {
       lines: item.lines,
       themeOverride: item.themeOverride,
     };
-    updateSchedule([...state.schedule, newScheduleItem]);
+    const current = (state.schedule && state.schedule.length > 0) ? state.schedule : (DEFAULT_SCHEDULES[0]?.items || []);
+    updateSchedule([...current, newScheduleItem]);
+  };
+
+  const handleRemoveFromSchedule = (id: string) => {
+    const current = (state.schedule && state.schedule.length > 0) ? state.schedule : (DEFAULT_SCHEDULES[0]?.items || []);
+    updateSchedule(current.filter((item: ScheduleItem) => item.id !== id));
   };
 
   // Handle instantly presenting an item live
@@ -134,6 +141,8 @@ export const App: React.FC = () => {
         onSaveLibraryItem={saveLibraryItem}
         onDeleteLibraryItem={deleteLibraryItem}
         onAddToSchedule={handleAddToSchedule}
+        onUpdateSchedule={updateSchedule}
+        onRemoveFromSchedule={handleRemoveFromSchedule}
       />
     );
   }
@@ -202,6 +211,7 @@ export const App: React.FC = () => {
         onSaveLibraryItem={saveLibraryItem}
         onAddToSchedule={handleAddToSchedule}
         onGoLiveWithItem={handleGoLiveWithLibraryItem}
+        isScriptureLive={state.category === 'scripture'}
       />
 
       {/* Song & Scripture Library Drawer / Modal */}

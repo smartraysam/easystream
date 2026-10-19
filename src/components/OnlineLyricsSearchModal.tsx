@@ -3,7 +3,6 @@ import {
   Search, 
   Globe, 
   Music, 
-  Play, 
   ListPlus, 
   Check, 
   X, 
@@ -14,7 +13,8 @@ import {
   CheckCheck,
   Bookmark,
   Edit,
-  Plus
+  Plus,
+  Radio
 } from 'lucide-react';
 import { LibraryItem } from '../types';
 import { parseLyricsToSlides } from '../utils/lyricParser';
@@ -270,18 +270,85 @@ export const OnlineLyricsSearchModal: React.FC<OnlineLyricsSearchModalProps> = (
     setSelectedSong(null);
   };
 
-  const handleGoLiveLyrics = () => {
-    if (!selectedSong) return;
-    const item = getLibraryItemFromSong(selectedSong, lyricsSplitMode);
-    if (!selectedSong.isLocal) {
-      onSaveLibraryItem(item);
+  const handleGoLiveLyrics = async (songToLive = selectedSong) => {
+    if (!songToLive) return;
+    let currentSong = songToLive;
+    let fullLyrics = songToLive.plainLyrics;
+
+    if (!fullLyrics || fullLyrics.length < 20) {
+      try {
+        setLyricsLoading(true);
+        const apiBase = import.meta.env.VITE_API_URL || '';
+        const res = await fetch(
+          `${apiBase}/api/lyrics/details?id=${encodeURIComponent(songToLive.id)}&url=${encodeURIComponent(songToLive.sourceUrl || '')}`
+        );
+        const data = await res.json();
+        if (data.result?.plainLyrics) {
+          fullLyrics = data.result.plainLyrics;
+          currentSong = {
+            ...songToLive,
+            plainLyrics: fullLyrics,
+            snippet: data.result.snippet || songToLive.snippet,
+          };
+          setSelectedSong(currentSong);
+        }
+      } catch (err) {
+        console.error('Failed to load lyrics details:', err);
+      } finally {
+        setLyricsLoading(false);
+      }
     }
+
+    const item = getLibraryItemFromSong(currentSong, lyricsSplitMode);
+    onSaveLibraryItem(item);
     onGoLiveWithItem(item);
     setLyricsLiveFeedback(true);
     setTimeout(() => {
       setLyricsLiveFeedback(false);
       onClose();
     }, 600);
+  };
+
+  const handleEditSong = async (songToEdit = selectedSong) => {
+    if (!songToEdit) return;
+    let fullLyrics = songToEdit.plainLyrics;
+    let currentSong = songToEdit;
+
+    if (!fullLyrics || fullLyrics.length < 20) {
+      try {
+        setLyricsLoading(true);
+        const apiBase = import.meta.env.VITE_API_URL || '';
+        const res = await fetch(
+          `${apiBase}/api/lyrics/details?id=${encodeURIComponent(songToEdit.id)}&url=${encodeURIComponent(songToEdit.sourceUrl || '')}`
+        );
+        const data = await res.json();
+        if (data.result?.plainLyrics) {
+          fullLyrics = data.result.plainLyrics;
+          currentSong = {
+            ...songToEdit,
+            plainLyrics: fullLyrics,
+            snippet: data.result.snippet || songToEdit.snippet,
+          };
+          setSelectedSong(currentSong);
+          setOnlineSongResults(prev => prev.map(s => s.id === songToEdit.id ? currentSong : s));
+        }
+      } catch (err) {
+        console.error('Failed to load lyrics details for editor:', err);
+      } finally {
+        setLyricsLoading(false);
+      }
+    }
+
+    setEditingSong({
+      id: currentSong.localItem?.id,
+      title: currentSong.trackName,
+      author: currentSong.artistName,
+      category: (currentSong.localItem?.category as any) || 'song',
+      content: fullLyrics || currentSong.plainLyrics,
+      plainLyrics: fullLyrics || currentSong.plainLyrics,
+      splitMode: lyricsSplitMode,
+    });
+    setIsSongEditorOpen(true);
   };
 
   const handleAddToScheduleLyrics = () => {
@@ -441,16 +508,85 @@ export const OnlineLyricsSearchModal: React.FC<OnlineLyricsSearchModalProps> = (
                   }
                   if (e.key === 'Enter') {
                     e.preventDefault();
+                    setShowLyricSuggestions(false);
                     if (activeLyricIndex >= 0 && lyricSuggestions[activeLyricIndex]) {
-                      handleSelectLyricSuggestion(lyricSuggestions[activeLyricIndex]);
-                    } else {
-                      setShowLyricSuggestions(false);
+                      const sug = lyricSuggestions[activeLyricIndex];
+                      if (sug.isLocal && sug.localItem) {
+                        onGoLiveWithItem(sug.localItem);
+                        onClose();
+                        return;
+                      }
+                      // Online suggestion - search and go live immediately
+                      setLyricsQuery(sug.title);
+                      (async () => {
+                        try {
+                          setLyricsLoading(true);
+                          const apiBase = import.meta.env.VITE_API_URL || '';
+                          const res = await fetch(`${apiBase}/api/lyrics/search?q=${encodeURIComponent(sug.title)}`);
+                          const data = await res.json();
+                          if (data.results && data.results.length > 0) {
+                            await handleGoLiveLyrics(data.results[0]);
+                          }
+                        } catch (err) {
+                          console.error('Enter lyric search failed:', err);
+                        } finally {
+                          setLyricsLoading(false);
+                        }
+                      })();
+                      return;
+                    }
+
+                    if (selectedSong) {
+                      handleGoLiveLyrics(selectedSong);
+                    } else if (combinedSongResults.length > 0) {
+                      handleGoLiveLyrics(combinedSongResults[0]);
+                    } else if (lyricsQuery.trim()) {
+                      const q = lyricsQuery.trim();
+                      (async () => {
+                        try {
+                          setLyricsLoading(true);
+                          const apiBase = import.meta.env.VITE_API_URL || '';
+                          const res = await fetch(`${apiBase}/api/lyrics/search?q=${encodeURIComponent(q)}`);
+                          const data = await res.json();
+                          if (data.results && data.results.length > 0) {
+                            await handleGoLiveLyrics(data.results[0]);
+                          }
+                        } catch (err) {
+                          console.error('Direct online lyric search on Enter failed:', err);
+                        } finally {
+                          setLyricsLoading(false);
+                        }
+                      })();
                     }
                     return;
                   }
                   if (e.key === 'Escape') {
                     setShowLyricSuggestions(false);
                     return;
+                  }
+                } else if (e.key === 'Enter') {
+                  e.preventDefault();
+                  if (selectedSong) {
+                    handleGoLiveLyrics(selectedSong);
+                  } else if (combinedSongResults.length > 0) {
+                    handleGoLiveLyrics(combinedSongResults[0]);
+                  } else if (lyricsQuery.trim()) {
+                    const q = lyricsQuery.trim();
+                    (async () => {
+                      try {
+                        setLyricsLoading(true);
+                        const apiBase = import.meta.env.VITE_API_URL || '';
+                        const res = await fetch(`${apiBase}/api/lyrics/search?q=${encodeURIComponent(q)}`);
+                        const data = await res.json();
+                        if (data.results && data.results.length > 0) {
+                          await handleGoLiveLyrics(data.results[0]);
+                        }
+                      } catch (err) {
+                        console.error('Direct online lyric search on Enter failed:', err);
+                      } finally {
+                        setLyricsLoading(false);
+                      }
+                    })();
                   }
                 }
               }}
@@ -702,6 +838,42 @@ export const OnlineLyricsSearchModal: React.FC<OnlineLyricsSearchModalProps> = (
                           "{song.snippet}"
                         </div>
                       )}
+
+                      {/* Card quick actions: Edit, Live */}
+                      <div
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'flex-end',
+                          gap: '6px',
+                          marginTop: '4px',
+                          paddingTop: '4px',
+                          borderTop: '1px solid rgba(255, 255, 255, 0.04)',
+                        }}
+                      >
+                        <button
+                          className="btn"
+                          style={{ fontSize: '10px', padding: '2px 7px', background: 'rgba(168, 85, 247, 0.15)', color: '#c084fc', border: '1px solid rgba(168, 85, 247, 0.3)' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleEditSong(song);
+                          }}
+                          title="Edit song lyrics and structure"
+                        >
+                          <Edit size={10} /> Edit
+                        </button>
+                        <button
+                          className="btn"
+                          style={{ fontSize: '10px', padding: '2px 7px', background: 'rgba(239, 68, 68, 0.15)', color: '#f87171', border: '1px solid rgba(239, 68, 68, 0.3)' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleGoLiveLyrics(song);
+                          }}
+                          title="Save to bank & send live to screen directly"
+                        >
+                          <Radio size={10} /> Live
+                        </button>
+                      </div>
                     </div>
                   );
                 })
@@ -737,42 +909,43 @@ export const OnlineLyricsSearchModal: React.FC<OnlineLyricsSearchModalProps> = (
                   </div>
 
                   {/* Split Format Selector */}
-                  {!selectedSong.isLocal && (
-                    <div style={{ display: 'flex', gap: '3px', background: 'rgba(0, 0, 0, 0.4)', padding: '2px', borderRadius: '6px' }}>
-                      <button
-                        className={`btn ${lyricsSplitMode === 'lines' ? 'btn-primary' : ''}`}
-                        style={{ fontSize: '10px', padding: '3px 7px' }}
-                        onClick={() => setLyricsSplitMode('lines')}
-                        title="1 line per slide"
-                      >
-                        1 Line
-                      </button>
-                      <button
-                        className={`btn ${lyricsSplitMode === 'smart' ? 'btn-primary' : ''}`}
-                        style={{ fontSize: '10px', padding: '3px 7px' }}
-                        onClick={() => setLyricsSplitMode('smart')}
-                        title="Smart 2 lines per slide"
-                      >
-                        Smart 2
-                      </button>
-                      <button
-                        className={`btn ${lyricsSplitMode === 'smart3' ? 'btn-primary' : ''}`}
-                        style={{ fontSize: '10px', padding: '3px 7px' }}
-                        onClick={() => setLyricsSplitMode('smart3')}
-                        title="Smart 3 lines per slide"
-                      >
-                        Smart 3
-                      </button>
-                      <button
-                        className={`btn ${lyricsSplitMode === 'stanzas' ? 'btn-primary' : ''}`}
-                        style={{ fontSize: '10px', padding: '3px 7px' }}
-                        onClick={() => setLyricsSplitMode('stanzas')}
-                        title="Full stanzas per slide"
-                      >
-                        Stanzas
-                      </button>
-                    </div>
-                  )}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '3px', background: 'rgba(0, 0, 0, 0.4)', padding: '3px 6px', borderRadius: '6px' }}>
+                    <span style={{ fontSize: '10px', fontWeight: 800, color: '#94a3b8', textTransform: 'uppercase', marginRight: '2px' }}>
+                      Split:
+                    </span>
+                    <button
+                      className={`btn ${lyricsSplitMode === 'lines' ? 'btn-primary' : ''}`}
+                      style={{ fontSize: '10px', padding: '3px 7px' }}
+                      onClick={() => setLyricsSplitMode('lines')}
+                      title="1 line per slide"
+                    >
+                      1 Line
+                    </button>
+                    <button
+                      className={`btn ${lyricsSplitMode === 'smart' ? 'btn-primary' : ''}`}
+                      style={{ fontSize: '10px', padding: '3px 7px' }}
+                      onClick={() => setLyricsSplitMode('smart')}
+                      title="Smart 2 lines per slide"
+                    >
+                      Smart 2
+                    </button>
+                    <button
+                      className={`btn ${lyricsSplitMode === 'smart3' ? 'btn-primary' : ''}`}
+                      style={{ fontSize: '10px', padding: '3px 7px' }}
+                      onClick={() => setLyricsSplitMode('smart3')}
+                      title="Smart 3 lines per slide"
+                    >
+                      Smart 3
+                    </button>
+                    <button
+                      className={`btn ${lyricsSplitMode === 'stanzas' ? 'btn-primary' : ''}`}
+                      style={{ fontSize: '10px', padding: '3px 7px' }}
+                      onClick={() => setLyricsSplitMode('stanzas')}
+                      title="Full stanzas per slide"
+                    >
+                      Stanzas
+                    </button>
+                  </div>
                 </div>
 
                 {/* Auto-Save Notification Banner */}
@@ -835,18 +1008,7 @@ export const OnlineLyricsSearchModal: React.FC<OnlineLyricsSearchModalProps> = (
                     <button
                       className="btn"
                       style={{ fontSize: '12px', padding: '7px 12px' }}
-                      onClick={() => {
-                        setEditingSong({
-                          id: selectedSong.localItem?.id,
-                          title: selectedSong.trackName,
-                          author: selectedSong.artistName,
-                          category: (selectedSong.localItem?.category as any) || 'song',
-                          content: selectedSong.plainLyrics,
-                          plainLyrics: selectedSong.plainLyrics,
-                          splitMode: lyricsSplitMode,
-                        });
-                        setIsSongEditorOpen(true);
-                      }}
+                      onClick={() => handleEditSong(selectedSong)}
                       title="Edit lyrics and adjust slide splitting"
                     >
                       <Edit size={13} /> Edit Lyrics
@@ -890,11 +1052,24 @@ export const OnlineLyricsSearchModal: React.FC<OnlineLyricsSearchModalProps> = (
 
                     <button
                       className="btn btn-primary"
-                      style={{ fontSize: '12px', padding: '7px 16px' }}
-                      onClick={handleGoLiveLyrics}
+                      style={{
+                        fontSize: '12px',
+                        padding: '7px 16px',
+                        background: 'linear-gradient(135deg, #ef4444 0%, #dc2626 100%)',
+                        border: 'none',
+                        color: '#ffffff',
+                        fontWeight: 800,
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        boxShadow: '0 0 14px rgba(239, 68, 68, 0.45)',
+                        cursor: 'pointer',
+                      }}
+                      onClick={() => handleGoLiveLyrics(selectedSong)}
+                      title="Save song with chosen split format and send directly to live display"
                     >
-                      {lyricsLiveFeedback ? <Check size={14} /> : <Play size={14} />}
-                      {lyricsLiveFeedback ? 'Loading Live...' : 'Go Live Now'}
+                      {lyricsLiveFeedback ? <Check size={14} /> : <Radio size={14} />}
+                      {lyricsLiveFeedback ? 'Sent Live!' : 'Save & Send Live'}
                     </button>
                   </div>
                 </div>

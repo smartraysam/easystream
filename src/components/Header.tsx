@@ -12,15 +12,12 @@ import {
   Image as ImageIcon,
   Search,
   Clock,
-  Download,
-  Check,
   ChevronDown,
   SlidersHorizontal,
   Settings,
   EyeOff
 } from 'lucide-react';
 import { LiveState, TimerState } from '../types';
-import { usePWAInstall } from '../hooks/usePWAInstall';
 import { ResetConfirmModal } from './ResetConfirmModal';
 
 interface HeaderProps {
@@ -54,7 +51,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenOnlineSearch,
   onOpenTimer,
   onOpenFormatSettings,
-  onSetTimerConfig,
+  onSetTimerConfig: _onSetTimerConfig,
   onResetToDefault,
   onResetAllToDefault,
 }) => {
@@ -126,18 +123,6 @@ export const Header: React.FC<HeaderProps> = ({
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onOpenScriptures]);
-
-  const toggleDisplayTimer = () => {
-    if (onSetTimerConfig) {
-      onSetTimerConfig({ showOnDisplay: !timerState.showOnDisplay });
-    }
-  };
-
-  const toggleDisplayClock = () => {
-    if (onSetTimerConfig) {
-      onSetTimerConfig({ showClockOnDisplay: !timerState.showClockOnDisplay });
-    }
-  };
 
   const toggleBlackout = () => {
     onUpdateLiveState({ isBlackout: !liveState.isBlackout });
@@ -648,28 +633,6 @@ export const Header: React.FC<HeaderProps> = ({
           <BookOpen size={14} />
           Library
         </button>
-
-        <a
-          href="/v2"
-          className="btn"
-          style={{
-            fontSize: '12px',
-            padding: '6px 12px',
-            background: 'linear-gradient(135deg, rgba(14, 165, 233, 0.2) 0%, rgba(59, 130, 246, 0.2) 100%)',
-            borderColor: 'rgba(56, 189, 248, 0.4)',
-            color: '#38bdf8',
-            fontWeight: 800,
-            textDecoration: 'none',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            boxShadow: '0 0 12px rgba(56, 189, 248, 0.15)',
-          }}
-          title="Open Simple V2 Scripture & Countdown Presenter"
-        >
-          <BookOpen size={13} />
-          V2 Presenter
-        </a>
 
         {/* Subtle vertical separator */}
         <div style={{ width: '1px', height: '20px', background: 'rgba(255, 255, 255, 0.1)', margin: '0 2px' }} />

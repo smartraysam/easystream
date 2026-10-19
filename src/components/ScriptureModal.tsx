@@ -11,11 +11,7 @@ import {
   ChevronLeft,
   ChevronRight,
   BookMarked,
-  Sparkles,
-  Layers,
   Tv,
-  ExternalLink,
-  Sliders,
   CheckCheck,
 } from "lucide-react";
 import { LibraryItem } from "../types";
@@ -64,16 +60,17 @@ interface ScriptureModalProps {
   onAddToSchedule: (item: LibraryItem) => void;
   onGoLiveWithItem: (item: LibraryItem) => void;
   initialQuery?: string;
+  isScriptureLive?: boolean;
 }
 
 export const ScriptureModal: React.FC<ScriptureModalProps> = ({
   isOpen,
   onClose,
-  library = [],
   onSaveLibraryItem,
   onAddToSchedule,
   onGoLiveWithItem,
   initialQuery = "",
+  isScriptureLive = false,
 }) => {
   const [query, setQuery] = useState(initialQuery);
   const [selectedVersion, setSelectedVersion] = useState("KJV");
@@ -346,7 +343,7 @@ export const ScriptureModal: React.FC<ScriptureModalProps> = ({
   const handleSelectVersion = (verId: string) => {
     setSelectedVersion(verId);
     if (query && hasChapterNumber(query)) {
-      executeSearch(query, verId, true);
+      executeSearch(query, verId, isScriptureLive);
     }
   };
 
@@ -358,7 +355,7 @@ export const ScriptureModal: React.FC<ScriptureModalProps> = ({
     } else if (sug.type === "verse" || sug.type === "version") {
       setQuery(sug.text);
       setShowSuggestions(false);
-      executeSearch(sug.text, selectedVersion, true);
+      executeSearch(sug.text, selectedVersion, isScriptureLive);
     } else {
       updateQueryAndFocusEnd(sug.text);
     }
@@ -797,7 +794,7 @@ export const ScriptureModal: React.FC<ScriptureModalProps> = ({
                         );
                       } else {
                         setShowSuggestions(false);
-                        executeSearch(query, selectedVersion);
+                        executeSearch(query, selectedVersion, true);
                       }
                       return;
                     }
@@ -807,7 +804,7 @@ export const ScriptureModal: React.FC<ScriptureModalProps> = ({
                     }
                   } else if (e.key === "Enter") {
                     e.preventDefault();
-                    executeSearch(query, selectedVersion);
+                    executeSearch(query, selectedVersion, true);
                   }
                 }}
                 placeholder="Search scripture reference e.g., 'John 3:16', 'Psalm 23', 'Romans 8:28-39' or 'Gen 1:1'..."
@@ -1371,7 +1368,13 @@ export const ScriptureModal: React.FC<ScriptureModalProps> = ({
                       return (
                         <div
                           key={idx}
-                          onClick={() => setActiveSlideIndex(idx)}
+                          onClick={() => {
+                            setActiveSlideIndex(idx);
+                            if (isScriptureLive) {
+                              const item = createLibraryItemFromResult();
+                              if (item) onGoLiveWithItem(item);
+                            }
+                          }}
                           style={{
                             background: isActive
                               ? "rgba(56, 189, 248, 0.12)"

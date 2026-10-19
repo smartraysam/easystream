@@ -3,6 +3,8 @@ export type VerticalAlignment = 'top' | 'center' | 'bottom';
 export type BackgroundType = 'solid' | 'gradient' | 'animated-gradient' | 'transparent';
 export type DisplayMode = 'fullscreen' | 'lower-third';
 
+export type PresenterLayout = 'easyworship' | 'quickdeck' | 'classic';
+
 export interface PresentationTheme {
   fontFamily: string;
   fontSize: number; // in pt/px base scale (e.g. 42)
@@ -39,6 +41,7 @@ export interface PresentationTheme {
   showProgressBar: boolean;
   showReferenceBadge: boolean;
   maxLinesPerSlide?: number;
+  presenterLayout?: PresenterLayout;
 
   // Dedicated formatting for Scripture & Lyrics
   scripture?: ScriptureFormatting;
