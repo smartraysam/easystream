@@ -30,6 +30,10 @@ import {
   Volume2,
   VolumeX,
   Repeat,
+  Download,
+  Sliders,
+  Eye,
+  CheckCircle2,
 } from "lucide-react";
 import {
   AppState,
@@ -60,6 +64,20 @@ import {
 import { OnlineSongResult, DEFAULT_WORSHIP_SONG } from "./V2Presenter";
 import { POPULAR_WORSHIP_SONGS } from "../data/popularWorshipSongs";
 import { ScheduleItemEditorModal } from "./ScheduleItemEditorModal";
+import { ThemeBackgroundLayer } from "./ThemeBackgroundLayer";
+import {
+  EXTENDED_THEME_PRESETS,
+  ExtendedThemePreset,
+  PATTERN_PRESETS,
+  getSavedCustomThemes,
+  saveCustomTheme,
+  deleteCustomTheme,
+  getSavedCustomBackgrounds,
+  saveCustomBackground,
+  exportThemeToJson,
+  parseAndValidateThemeJson,
+  getPatternById,
+} from "../utils/themePatterns";
 
 export interface OnlineScriptureVerse {
   verse: number;
@@ -111,7 +129,7 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
   onSetLines,
   onJumpTo,
   onUpdateLiveState,
-  onUpdateTheme: _onUpdateTheme,
+  onUpdateTheme,
   onSaveLibraryItem,
   onDeleteLibraryItem,
   onAddToSchedule,
@@ -1932,6 +1950,223 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [previewItem, selectedVersion, state.lines, state.cur, activeVerseRange, state.category]);
 
+  // -----------------------------------------------------------------
+  // 8. Themes Tab State, Handlers & Custom Theme Studio
+  // -----------------------------------------------------------------
+  const [previewTheme, setPreviewTheme] = useState<Partial<PresentationTheme> | null>(null);
+  const [themeSearchQuery, setThemeSearchQuery] = useState("");
+  const [themeFilterCategory, setThemeFilterCategory] = useState<
+    "all" | "color" | "pattern" | "solid" | "custom"
+  >("all");
+  const [customThemes, setCustomThemes] = useState<ExtendedThemePreset[]>(() =>
+    getSavedCustomThemes()
+  );
+  const [customBackgrounds, setCustomBackgrounds] = useState<string[]>(() =>
+    getSavedCustomBackgrounds()
+  );
+  const [isThemeCustomizerOpen, setIsThemeCustomizerOpen] = useState(false);
+  const [themeActionFeedback, setThemeActionFeedback] = useState<string | null>(null);
+
+  // Custom Theme Studio Draft State
+  const [customThemeDraftName, setCustomThemeDraftName] = useState("Custom Worship Theme");
+  const [customThemeDraft, setCustomThemeDraft] = useState<Partial<PresentationTheme>>(() => ({
+    fontFamily: state.theme.fontFamily || "Montserrat, sans-serif",
+    fontSize: state.theme.fontSize || 44,
+    fontWeight: state.theme.fontWeight || 700,
+    textColor: state.theme.textColor || "#ffffff",
+    accentColor: state.theme.accentColor || "#38bdf8",
+    bgType: state.theme.bgType || "animated-gradient",
+    bgColor: state.theme.bgColor || "#090d16",
+    bgGradient:
+      state.theme.bgGradient ||
+      "linear-gradient(135deg, #060b19 0%, #1e1b4b 45%, #2e1065 100%)",
+    bgPattern: state.theme.bgPattern || "crosses",
+    bgPatternColor: state.theme.bgPatternColor || "#f59e0b",
+    bgPatternOpacity: state.theme.bgPatternOpacity ?? 0.2,
+    bgPatternScale: state.theme.bgPatternScale ?? 1,
+    bgImage: state.theme.bgImage,
+    bgImageFit: state.theme.bgImageFit || "cover",
+    bgOverlayOpacity: state.theme.bgOverlayOpacity ?? 0.2,
+    textShadow: state.theme.textShadow ?? true,
+    shadowBlur: state.theme.shadowBlur ?? 16,
+    shadowColor: state.theme.shadowColor || "rgba(0,0,0,0.9)",
+    textOutline: state.theme.textOutline ?? true,
+    outlineWidth: state.theme.outlineWidth ?? 2,
+    outlineColor: state.theme.outlineColor || "#000000",
+  }));
+
+  const themeFileInputRef = useRef<HTMLInputElement | null>(null);
+  const bgImageInputRef = useRef<HTMLInputElement | null>(null);
+
+  const showThemeToast = (msg: string) => {
+    setThemeActionFeedback(msg);
+    setTimeout(() => setThemeActionFeedback(null), 3500);
+  };
+
+  // Preview a theme in the Upper Preview Monitor
+  const handlePreviewTheme = (themeItem: Partial<PresentationTheme>, name?: string) => {
+    setPreviewTheme(themeItem);
+    // If preview monitor has blank, set an inspiring scripture preview slide
+    if (!previewItem.title || previewItem.category === "blank") {
+      setPreviewItem({
+        id: "theme-sample-preview",
+        title: "Theme Preview",
+        category: "scripture",
+        lines: [
+          "For God so loved the world that he gave his one and only Son, that whoever believes in him shall not perish but have eternal life.\n\nJohn 3:16",
+        ],
+        cur: 0,
+      });
+    }
+    showThemeToast(`Previewing "${name || "Theme"}" in Preview Monitor`);
+  };
+
+  // Apply theme to Live Output (and sync with Preview & Display)
+  const handleApplyTheme = (themeToApply: Partial<PresentationTheme>, name?: string) => {
+    onUpdateTheme?.(themeToApply);
+    setPreviewTheme(null);
+    setLiveFeedback(true);
+    setTimeout(() => setLiveFeedback(false), 2000);
+    showThemeToast(`Theme "${name || "Theme"}" applied to Live Monitor & Display!`);
+  };
+
+  // Import theme from JSON file
+  const handleImportThemeJsonFile = (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
+    const file = fileList[0];
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const content = e.target?.result as string;
+      const res = parseAndValidateThemeJson(content);
+      if (res.valid && res.theme) {
+        const themeId = `custom-theme-${Date.now()}`;
+        const newPreset: ExtendedThemePreset = {
+          id: themeId,
+          name: res.name || file.name.replace(/\.json$/i, ""),
+          category: "custom",
+          description: "Imported custom theme configuration",
+          palette: [
+            res.theme.bgColor || "#090d16",
+            res.theme.accentColor || "#38bdf8",
+            res.theme.textColor || "#ffffff",
+          ],
+          theme: res.theme,
+        };
+        saveCustomTheme(newPreset);
+        setCustomThemes(getSavedCustomThemes());
+        onUpdateTheme?.(res.theme);
+        setPreviewTheme(null);
+        showThemeToast(`Theme "${newPreset.name}" imported and applied live!`);
+      } else {
+        showThemeToast(`Import failed: ${res.error || "Invalid theme file"}`);
+      }
+    };
+    reader.readAsText(file);
+    if (themeFileInputRef.current) themeFileInputRef.current.value = "";
+  };
+
+  // Import background image file (JPG, PNG, WebP)
+  const handleImportBackgroundImageFile = (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
+    const file = fileList[0];
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const dataUrl = e.target?.result as string;
+      if (dataUrl) {
+        saveCustomBackground(dataUrl);
+        setCustomBackgrounds(getSavedCustomBackgrounds());
+        const bgTheme: Partial<PresentationTheme> = {
+          ...state.theme,
+          bgType: "image",
+          bgImage: dataUrl,
+          bgImageFit: "cover",
+          bgOverlayOpacity: 0.25,
+        };
+        const newPreset: ExtendedThemePreset = {
+          id: `custom-bg-${Date.now()}`,
+          name: file.name.replace(/\.[^/.]+$/, "") || "Custom Background",
+          category: "custom",
+          description: "Imported background image for live projection",
+          palette: ["#090d16", "#38bdf8", "#ffffff"],
+          theme: bgTheme,
+        };
+        saveCustomTheme(newPreset);
+        setCustomThemes(getSavedCustomThemes());
+        onUpdateTheme?.(bgTheme);
+        setPreviewTheme(null);
+        showThemeToast(`Custom background "${newPreset.name}" applied live!`);
+      }
+    };
+    reader.readAsDataURL(file);
+    if (bgImageInputRef.current) bgImageInputRef.current.value = "";
+  };
+
+  // Export current active theme as JSON
+  const handleExportCurrentTheme = () => {
+    exportThemeToJson(
+      state.theme,
+      state.title ? `${state.title}-theme` : "easystream-presentation-theme"
+    );
+    showThemeToast("Theme exported successfully as JSON!");
+  };
+
+  // Save custom theme draft
+  const handleSaveCustomDraft = () => {
+    const name = customThemeDraftName.trim() || "My Custom Theme";
+    const newPreset: ExtendedThemePreset = {
+      id: `custom-theme-${Date.now()}`,
+      name,
+      category: "custom",
+      description: "User customized worship theme",
+      palette: [
+        customThemeDraft.bgColor || "#090d16",
+        customThemeDraft.accentColor || "#38bdf8",
+        customThemeDraft.textColor || "#ffffff",
+      ],
+      theme: customThemeDraft,
+    };
+    saveCustomTheme(newPreset);
+    setCustomThemes(getSavedCustomThemes());
+    onUpdateTheme?.(customThemeDraft);
+    setPreviewTheme(null);
+    showThemeToast(`Theme "${name}" saved to library & applied live!`);
+  };
+
+  // Delete a custom theme
+  const handleDeleteCustom = (id: string, name: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    deleteCustomTheme(id);
+    setCustomThemes(getSavedCustomThemes());
+    showThemeToast(`Theme "${name}" removed from library`);
+  };
+
+  // Combined themes list
+  const combinedThemesList = useMemo(() => {
+    return [...customThemes, ...EXTENDED_THEME_PRESETS];
+  }, [customThemes]);
+
+  // Filtered themes list based on category & search
+  const filteredThemesList = useMemo(() => {
+    return combinedThemesList.filter((item) => {
+      // Category filter
+      if (themeFilterCategory === "color" && item.category !== "color") return false;
+      if (themeFilterCategory === "pattern" && item.category !== "pattern") return false;
+      if (themeFilterCategory === "solid" && item.category !== "solid") return false;
+      if (themeFilterCategory === "custom" && item.category !== "custom") return false;
+
+      // Search query filter
+      if (themeSearchQuery.trim()) {
+        const q = themeSearchQuery.toLowerCase();
+        return (
+          item.name.toLowerCase().includes(q) ||
+          item.description.toLowerCase().includes(q) ||
+          (item.theme.fontFamily && item.theme.fontFamily.toLowerCase().includes(q))
+        );
+      }
+      return true;
+    });
+  }, [combinedThemesList, themeFilterCategory, themeSearchQuery]);
+
   return (
     <div
       style={{
@@ -2803,6 +3038,11 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                 position: "relative",
               }}
             >
+              {/* Theme Background Layer in Preview Monitor */}
+              <ThemeBackgroundLayer
+                theme={previewTheme || state.theme}
+                isBlackout={false}
+              />
               {/* Floating Left/Right Navigation Arrows directly on Screen */}
               {(previewItem.lines?.length || 0) > 1 && (
                 <>
@@ -2929,6 +3169,8 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                         flexDirection: "column",
                         alignItems: "center",
                         width: "100%",
+                        position: "relative",
+                        zIndex: 2,
                       }}
                     >
                       {/* Flanked Scripture Title at Top */}
@@ -3281,6 +3523,11 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                 position: "relative",
               }}
             >
+              {/* Theme Background Layer in Live Monitor */}
+              <ThemeBackgroundLayer
+                theme={state.theme}
+                isBlackout={state.liveState.isBlackout}
+              />
               {/* Floating Left/Right Navigation Arrows directly on Live Monitor */}
               {(state.lines?.length || 0) > 1 && (
                 <>
@@ -3409,6 +3656,8 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                         flexDirection: "column",
                         alignItems: "center",
                         width: "100%",
+                        position: "relative",
+                        zIndex: 2,
                       }}
                     >
                       {/* Flanked Scripture Title at Top */}
@@ -7699,28 +7948,1497 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
         )}
 
         {/* ----------------------------------------------------------- */}
-        {/* TAB 5: THEMES                                               */}
+        {/* TAB 5: THEMES & BACKGROUND DESIGNER                         */}
         {/* ----------------------------------------------------------- */}
         {activeTab === "themes" && (
           <div
             style={{
               flex: 1,
               display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
               flexDirection: "column",
-              gap: "8px",
-              color: "#64748b",
+              overflow: "hidden",
+              background: "#080c14",
+              position: "relative",
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                const f = e.dataTransfer.files[0];
+                if (f.name.endsWith(".json") || f.type.includes("json")) {
+                  handleImportThemeJsonFile(e.dataTransfer.files);
+                } else if (f.type.startsWith("image/")) {
+                  handleImportBackgroundImageFile(e.dataTransfer.files);
+                }
+              }
             }}
           >
+            {/* Hidden File Inputs for Import */}
+            <input
+              ref={themeFileInputRef}
+              type="file"
+              accept=".json,application/json"
+              style={{ display: "none" }}
+              onChange={(e) => handleImportThemeJsonFile(e.target.files)}
+            />
+            <input
+              ref={bgImageInputRef}
+              type="file"
+              accept="image/*"
+              style={{ display: "none" }}
+              onChange={(e) => handleImportBackgroundImageFile(e.target.files)}
+            />
+
+            {/* Sub-Header: Search + Categories + Action Buttons */}
             <div
-              style={{ fontSize: "14px", fontWeight: 700, color: "#94a3b8" }}
+              style={{
+                padding: "8px 16px",
+                background: "rgba(15, 23, 42, 0.8)",
+                borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: "12px",
+                flexWrap: "wrap",
+              }}
             >
-              Themes & Layouts
+              {/* Left: Search & Filter Pills */}
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", flex: 1 }}>
+                {/* Search Input */}
+                <div style={{ position: "relative", width: "220px" }}>
+                  <Search
+                    size={14}
+                    color="#94a3b8"
+                    style={{
+                      position: "absolute",
+                      left: "10px",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                    }}
+                  />
+                  <input
+                    type="text"
+                    value={themeSearchQuery}
+                    onChange={(e) => setThemeSearchQuery(e.target.value)}
+                    placeholder="Search themes, styles..."
+                    style={{
+                      width: "100%",
+                      padding: "5px 10px 5px 30px",
+                      background: "rgba(0, 0, 0, 0.4)",
+                      border: "1px solid rgba(255, 255, 255, 0.12)",
+                      borderRadius: "6px",
+                      color: "#ffffff",
+                      fontSize: "12px",
+                      outline: "none",
+                    }}
+                  />
+                  {themeSearchQuery && (
+                    <button
+                      onClick={() => setThemeSearchQuery("")}
+                      style={{
+                        position: "absolute",
+                        right: "8px",
+                        top: "50%",
+                        transform: "translateY(-50%)",
+                        background: "none",
+                        border: "none",
+                        color: "#64748b",
+                        cursor: "pointer",
+                        padding: 0,
+                      }}
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Filter Pills */}
+                <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                  {[
+                    { id: "all", label: "All Themes", count: combinedThemesList.length },
+                    {
+                      id: "color",
+                      label: "Colors & Gradients",
+                      count: combinedThemesList.filter((t) => t.category === "color").length,
+                    },
+                    {
+                      id: "pattern",
+                      label: "Patterns",
+                      count: combinedThemesList.filter((t) => t.category === "pattern").length,
+                    },
+                    {
+                      id: "solid",
+                      label: "Solid",
+                      count: combinedThemesList.filter((t) => t.category === "solid").length,
+                    },
+                    {
+                      id: "custom",
+                      label: "Custom / Imported",
+                      count: customThemes.length,
+                    },
+                  ].map((cat) => {
+                    const isSelected = themeFilterCategory === cat.id;
+                    return (
+                      <button
+                        key={cat.id}
+                        onClick={() => setThemeFilterCategory(cat.id as any)}
+                        style={{
+                          padding: "4px 10px",
+                          borderRadius: "6px",
+                          background: isSelected
+                            ? "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)"
+                            : "rgba(255, 255, 255, 0.04)",
+                          color: isSelected ? "#ffffff" : "#94a3b8",
+                          border: isSelected
+                            ? "1px solid #38bdf8"
+                            : "1px solid rgba(255, 255, 255, 0.08)",
+                          fontSize: "11px",
+                          fontWeight: isSelected ? 700 : 500,
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "5px",
+                          transition: "all 0.12s ease",
+                        }}
+                      >
+                        <span>{cat.label}</span>
+                        <span
+                          style={{
+                            fontSize: "9px",
+                            opacity: 0.75,
+                            background: "rgba(0,0,0,0.3)",
+                            padding: "1px 5px",
+                            borderRadius: "999px",
+                          }}
+                        >
+                          {cat.count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Right: Actions (Import JSON, Import Image, Export, Studio) */}
+              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                {/* Import Theme (JSON) */}
+                <button
+                  onClick={() => themeFileInputRef.current?.click()}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    padding: "5px 10px",
+                    borderRadius: "6px",
+                    background: "rgba(56, 189, 248, 0.12)",
+                    border: "1px solid rgba(56, 189, 248, 0.3)",
+                    color: "#38bdf8",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    transition: "all 0.12s ease",
+                  }}
+                  title="Import a theme configuration from JSON file or drag & drop"
+                >
+                  <Upload size={12} />
+                  <span>Import Theme</span>
+                </button>
+
+                {/* Import Background (Image) */}
+                <button
+                  onClick={() => bgImageInputRef.current?.click()}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    padding: "5px 10px",
+                    borderRadius: "6px",
+                    background: "rgba(168, 85, 247, 0.12)",
+                    border: "1px solid rgba(168, 85, 247, 0.3)",
+                    color: "#c084fc",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    transition: "all 0.12s ease",
+                  }}
+                  title="Upload an image background (JPG, PNG, WebP) for live projection"
+                >
+                  <Image size={12} />
+                  <span>Import Background</span>
+                </button>
+
+                {/* Export Current Theme */}
+                <button
+                  onClick={handleExportCurrentTheme}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    padding: "5px 10px",
+                    borderRadius: "6px",
+                    background: "rgba(255, 255, 255, 0.05)",
+                    border: "1px solid rgba(255, 255, 255, 0.12)",
+                    color: "#cbd5e1",
+                    fontSize: "11px",
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    transition: "all 0.12s ease",
+                  }}
+                  title="Export current active theme configuration as a JSON file"
+                >
+                  <Download size={12} />
+                  <span>Export</span>
+                </button>
+
+                {/* Theme Studio Customizer Drawer Toggle */}
+                <button
+                  onClick={() => setIsThemeCustomizerOpen((prev) => !prev)}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "5px",
+                    padding: "5px 12px",
+                    borderRadius: "6px",
+                    background: isThemeCustomizerOpen
+                      ? "linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)"
+                      : "rgba(255, 255, 255, 0.08)",
+                    border: isThemeCustomizerOpen
+                      ? "1px solid #c084fc"
+                      : "1px solid rgba(255, 255, 255, 0.16)",
+                    color: "#ffffff",
+                    fontSize: "11px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    boxShadow: isThemeCustomizerOpen
+                      ? "0 0 12px rgba(139, 92, 246, 0.4)"
+                      : "none",
+                    transition: "all 0.15s ease",
+                  }}
+                  title="Open Custom Theme & Pattern Designer Studio"
+                >
+                  <Sliders size={12} />
+                  <span>Theme Studio</span>
+                </button>
+              </div>
             </div>
-            <div style={{ fontSize: "12px" }}>
-              Use the Theme Designer button in the top bar to customize fonts,
-              backgrounds, and overlays.
+
+            {/* Toast Feedback Banner */}
+            {themeActionFeedback && (
+              <div
+                style={{
+                  position: "absolute",
+                  top: "54px",
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  zIndex: 30,
+                  background: "rgba(15, 23, 42, 0.95)",
+                  border: "1px solid #38bdf8",
+                  boxShadow: "0 8px 24px rgba(0, 0, 0, 0.8), 0 0 16px rgba(56, 189, 248, 0.35)",
+                  color: "#ffffff",
+                  padding: "6px 16px",
+                  borderRadius: "999px",
+                  fontSize: "12px",
+                  fontWeight: 700,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  animation: "fadeIn 0.2s ease",
+                }}
+              >
+                <CheckCircle2 size={14} color="#38bdf8" />
+                <span>{themeActionFeedback}</span>
+              </div>
+            )}
+
+            {/* Split Content: Main Themes Grid + Optional Customizer Drawer */}
+            <div style={{ flex: 1, display: "flex", overflow: "hidden" }}>
+              {/* Left / Center Grid of Theme Cards */}
+              <div
+                style={{
+                  flex: 1,
+                  overflowY: "auto",
+                  padding: "16px 20px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "16px",
+                }}
+              >
+                {/* Active Theme Status Bar */}
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    padding: "8px 14px",
+                    background: "rgba(30, 41, 59, 0.4)",
+                    borderRadius: "8px",
+                    border: "1px solid rgba(255, 255, 255, 0.06)",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <span
+                      style={{
+                        display: "inline-block",
+                        width: "8px",
+                        height: "8px",
+                        borderRadius: "50%",
+                        background: "#10b981",
+                        boxShadow: "0 0 8px #10b981",
+                      }}
+                    />
+                    <span style={{ fontSize: "12px", color: "#94a3b8" }}>
+                      Active Live Theme:
+                    </span>
+                    <strong style={{ fontSize: "12px", color: "#f8fafc" }}>
+                      {state.theme.bgPattern
+                        ? `Pattern: ${getPatternById(state.theme.bgPattern)?.name || state.theme.bgPattern}`
+                        : state.theme.bgType === "image"
+                        ? "Custom Background Image"
+                        : state.theme.bgType === "solid"
+                        ? "Solid Minimal Color"
+                        : "Ambient Motion Gradient"}
+                    </strong>
+                    <span
+                      style={{
+                        fontSize: "10px",
+                        padding: "2px 6px",
+                        borderRadius: "4px",
+                        background: "rgba(56, 189, 248, 0.15)",
+                        color: "#38bdf8",
+                        fontWeight: 700,
+                        textTransform: "uppercase",
+                      }}
+                    >
+                      {state.theme.bgType}
+                    </span>
+                  </div>
+
+                  <div style={{ fontSize: "11px", color: "#64748b" }}>
+                    Tip: Click <strong>Preview</strong> to inspect in upper monitor, or{" "}
+                    <strong>Apply Live</strong> to broadcast to projection screen.
+                  </div>
+                </div>
+
+                {/* Theme Cards Grid */}
+                {filteredThemesList.length === 0 ? (
+                  <div
+                    style={{
+                      flex: 1,
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "10px",
+                      color: "#64748b",
+                      padding: "40px",
+                    }}
+                  >
+                    <Palette size={32} color="#475569" />
+                    <div style={{ fontSize: "14px", fontWeight: 700, color: "#94a3b8" }}>
+                      No matching themes found
+                    </div>
+                    <div style={{ fontSize: "12px" }}>
+                      Try adjusting your search query or category filter.
+                    </div>
+                    <button
+                      onClick={() => {
+                        setThemeSearchQuery("");
+                        setThemeFilterCategory("all");
+                      }}
+                      style={{
+                        marginTop: "8px",
+                        padding: "6px 14px",
+                        borderRadius: "6px",
+                        background: "rgba(56, 189, 248, 0.12)",
+                        color: "#38bdf8",
+                        border: "1px solid rgba(56, 189, 248, 0.3)",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      Reset Filters
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fill, minmax(290px, 1fr))",
+                      gap: "16px",
+                    }}
+                  >
+                    {filteredThemesList.map((preset) => {
+                      const isActiveLive =
+                        (preset.theme.bgType === state.theme.bgType &&
+                          preset.theme.bgColor === state.theme.bgColor &&
+                          preset.theme.bgGradient === state.theme.bgGradient &&
+                          preset.theme.bgPattern === state.theme.bgPattern) ||
+                        false;
+
+                      const isCurrentlyPreviewed =
+                        previewTheme &&
+                        previewTheme.bgColor === preset.theme.bgColor &&
+                        previewTheme.bgGradient === preset.theme.bgGradient &&
+                        previewTheme.bgPattern === preset.theme.bgPattern;
+
+                      return (
+                        <div
+                          key={preset.id}
+                          onDoubleClick={() => handleApplyTheme(preset.theme, preset.name)}
+                          style={{
+                            background: "rgba(15, 23, 42, 0.65)",
+                            borderRadius: "10px",
+                            border: isActiveLive
+                              ? "2px solid #10b981"
+                              : isCurrentlyPreviewed
+                              ? "2px solid #38bdf8"
+                              : "1px solid rgba(255, 255, 255, 0.08)",
+                            overflow: "hidden",
+                            display: "flex",
+                            flexDirection: "column",
+                            boxShadow: isActiveLive
+                              ? "0 0 20px rgba(16, 185, 129, 0.25)"
+                              : isCurrentlyPreviewed
+                              ? "0 0 16px rgba(56, 189, 248, 0.25)"
+                              : "0 4px 14px rgba(0, 0, 0, 0.4)",
+                            transition: "all 0.15s ease",
+                            cursor: "pointer",
+                          }}
+                        >
+                          {/* 16:9 Thumbnail Preview using ThemeBackgroundLayer */}
+                          <div
+                            style={{
+                              width: "100%",
+                              aspectRatio: "16 / 9",
+                              position: "relative",
+                              overflow: "hidden",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              padding: "12px",
+                              textAlign: "center",
+                              borderBottom: "1px solid rgba(255, 255, 255, 0.06)",
+                            }}
+                          >
+                            {/* The Real Theme Background Layer */}
+                            <ThemeBackgroundLayer
+                              theme={preset.theme}
+                              isBlackout={false}
+                            />
+
+                            {/* Sample Text Overlay */}
+                            <div
+                              style={{
+                                position: "relative",
+                                zIndex: 2,
+                                display: "flex",
+                                flexDirection: "column",
+                                alignItems: "center",
+                                width: "100%",
+                              }}
+                            >
+                              <div
+                                style={{
+                                  fontSize: "9px",
+                                  fontWeight: 800,
+                                  color: preset.theme.accentColor || "#38bdf8",
+                                  letterSpacing: "0.08em",
+                                  textTransform: "uppercase",
+                                  marginBottom: "4px",
+                                  textShadow: "0 1px 4px rgba(0,0,0,0.9)",
+                                }}
+                              >
+                                JOHN 3:16
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: "11px",
+                                  fontWeight: preset.theme.fontWeight || 700,
+                                  fontFamily: preset.theme.fontFamily || "Montserrat, sans-serif",
+                                  color: preset.theme.textColor || "#ffffff",
+                                  lineHeight: 1.35,
+                                  textShadow: preset.theme.textShadow
+                                    ? `0 2px 6px ${preset.theme.shadowColor || "rgba(0,0,0,0.9)"}`
+                                    : "none",
+                                  overflow: "hidden",
+                                  display: "-webkit-box",
+                                  WebkitLineClamp: 2,
+                                  WebkitBoxOrient: "vertical",
+                                }}
+                              >
+                                For God so loved the world that He gave His only Son...
+                              </div>
+                            </div>
+
+                            {/* Badges on Thumbnail */}
+                            <div
+                              style={{
+                                position: "absolute",
+                                top: "8px",
+                                left: "8px",
+                                zIndex: 3,
+                                display: "flex",
+                                gap: "4px",
+                              }}
+                            >
+                              {isActiveLive && (
+                                <span
+                                  style={{
+                                    fontSize: "9px",
+                                    fontWeight: 900,
+                                    padding: "2px 7px",
+                                    borderRadius: "4px",
+                                    background: "#10b981",
+                                    color: "#ffffff",
+                                    boxShadow: "0 0 10px rgba(16, 185, 129, 0.6)",
+                                    letterSpacing: "0.04em",
+                                  }}
+                                >
+                                  LIVE ACTIVE
+                                </span>
+                              )}
+                              {isCurrentlyPreviewed && !isActiveLive && (
+                                <span
+                                  style={{
+                                    fontSize: "9px",
+                                    fontWeight: 800,
+                                    padding: "2px 7px",
+                                    borderRadius: "4px",
+                                    background: "#0284c7",
+                                    color: "#ffffff",
+                                    boxShadow: "0 0 10px rgba(2, 132, 199, 0.6)",
+                                  }}
+                                >
+                                  PREVIEW
+                                </span>
+                              )}
+                            </div>
+
+                            <div
+                              style={{
+                                position: "absolute",
+                                top: "8px",
+                                right: "8px",
+                                zIndex: 3,
+                              }}
+                            >
+                              <span
+                                style={{
+                                  fontSize: "9px",
+                                  fontWeight: 800,
+                                  padding: "2px 6px",
+                                  borderRadius: "4px",
+                                  background: "rgba(0, 0, 0, 0.6)",
+                                  color: "#cbd5e1",
+                                  border: "1px solid rgba(255, 255, 255, 0.15)",
+                                  textTransform: "uppercase",
+                                }}
+                              >
+                                {preset.theme.bgPattern
+                                  ? "Pattern"
+                                  : preset.theme.bgType === "image"
+                                  ? "Image"
+                                  : preset.theme.bgType === "solid"
+                                  ? "Solid"
+                                  : "Gradient"}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Card Content & Action Footer */}
+                          <div
+                            style={{
+                              padding: "10px 12px",
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: "8px",
+                            }}
+                          >
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  fontSize: "13px",
+                                  fontWeight: 800,
+                                  color: "#ffffff",
+                                }}
+                              >
+                                {preset.name}
+                              </span>
+
+                              {/* Palette Swatches */}
+                              <div style={{ display: "flex", alignItems: "center", gap: "3px" }}>
+                                {preset.palette.slice(0, 4).map((c, i) => (
+                                  <span
+                                    key={i}
+                                    style={{
+                                      width: "10px",
+                                      height: "10px",
+                                      borderRadius: "50%",
+                                      background: c,
+                                      border: "1px solid rgba(255, 255, 255, 0.3)",
+                                      boxShadow: "0 1px 3px rgba(0,0,0,0.5)",
+                                    }}
+                                  />
+                                ))}
+                              </div>
+                            </div>
+
+                            <div
+                              style={{
+                                fontSize: "11px",
+                                color: "#94a3b8",
+                                lineHeight: 1.35,
+                                height: "28px",
+                                overflow: "hidden",
+                                display: "-webkit-box",
+                                WebkitLineClamp: 2,
+                                WebkitBoxOrient: "vertical",
+                              }}
+                            >
+                              {preset.description}
+                            </div>
+
+                            {/* Buttons: Preview & Apply Live */}
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "6px",
+                                marginTop: "4px",
+                              }}
+                            >
+                              <button
+                                onClick={() => handlePreviewTheme(preset.theme, preset.name)}
+                                style={{
+                                  flex: 1,
+                                  padding: "5px 8px",
+                                  borderRadius: "6px",
+                                  background: "rgba(255, 255, 255, 0.06)",
+                                  border: "1px solid rgba(255, 255, 255, 0.12)",
+                                  color: "#cbd5e1",
+                                  fontSize: "11px",
+                                  fontWeight: 700,
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  gap: "4px",
+                                  transition: "all 0.12s ease",
+                                }}
+                                title="Inspect this theme in upper Preview monitor"
+                              >
+                                <Eye size={12} />
+                                <span>Preview</span>
+                              </button>
+
+                              <button
+                                onClick={() => handleApplyTheme(preset.theme, preset.name)}
+                                style={{
+                                  flex: 1.2,
+                                  padding: "5px 10px",
+                                  borderRadius: "6px",
+                                  background: isActiveLive
+                                    ? "rgba(16, 185, 129, 0.25)"
+                                    : "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                                  border: isActiveLive
+                                    ? "1px solid #10b981"
+                                    : "none",
+                                  color: "#ffffff",
+                                  fontSize: "11px",
+                                  fontWeight: 800,
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  gap: "4px",
+                                  boxShadow: isActiveLive
+                                    ? "none"
+                                    : "0 0 10px rgba(16, 185, 129, 0.35)",
+                                  transition: "all 0.12s ease",
+                                }}
+                                title="Apply this theme background directly to Live Monitor & Projection Display screen"
+                              >
+                                <Play size={10} fill="#ffffff" />
+                                <span>{isActiveLive ? "Active Live" : "Apply Live"}</span>
+                              </button>
+
+                              {preset.category === "custom" && (
+                                <button
+                                  onClick={(e) => handleDeleteCustom(preset.id, preset.name, e)}
+                                  style={{
+                                    padding: "5px 7px",
+                                    borderRadius: "6px",
+                                    background: "rgba(239, 68, 68, 0.15)",
+                                    border: "1px solid rgba(239, 68, 68, 0.3)",
+                                    color: "#f87171",
+                                    cursor: "pointer",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                  }}
+                                  title="Delete custom theme"
+                                >
+                                  <Trash2 size={12} />
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Right Drawer: Custom Theme & Pattern Studio */}
+              {isThemeCustomizerOpen && (
+                <div
+                  style={{
+                    width: "380px",
+                    borderLeft: "1px solid rgba(255, 255, 255, 0.08)",
+                    background: "rgba(15, 23, 42, 0.95)",
+                    display: "flex",
+                    flexDirection: "column",
+                    overflow: "hidden",
+                    animation: "fadeIn 0.15s ease",
+                  }}
+                >
+                  {/* Studio Header */}
+                  <div
+                    style={{
+                      padding: "10px 14px",
+                      borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      background: "rgba(255, 255, 255, 0.02)",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                      <Palette size={15} color="#c084fc" />
+                      <span style={{ fontSize: "12px", fontWeight: 800, color: "#ffffff" }}>
+                        Theme & Pattern Studio
+                      </span>
+                    </div>
+
+                    <button
+                      onClick={() => setIsThemeCustomizerOpen(false)}
+                      style={{
+                        background: "none",
+                        border: "none",
+                        color: "#94a3b8",
+                        cursor: "pointer",
+                        padding: "2px",
+                      }}
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+
+                  {/* Studio Scrollable Body */}
+                  <div
+                    style={{
+                      flex: 1,
+                      overflowY: "auto",
+                      padding: "14px",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "14px",
+                    }}
+                  >
+                    {/* Live Thumbnail Preview */}
+                    <div>
+                      <div
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          color: "#94a3b8",
+                          marginBottom: "6px",
+                          textTransform: "uppercase",
+                          letterSpacing: "0.05em",
+                        }}
+                      >
+                        Studio Preview
+                      </div>
+                      <div
+                        style={{
+                          width: "100%",
+                          aspectRatio: "16 / 9",
+                          borderRadius: "8px",
+                          overflow: "hidden",
+                          position: "relative",
+                          border: "1px solid rgba(255, 255, 255, 0.15)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          padding: "12px",
+                          textAlign: "center",
+                        }}
+                      >
+                        <ThemeBackgroundLayer
+                          theme={customThemeDraft}
+                          isBlackout={false}
+                        />
+                        <div
+                          style={{
+                            position: "relative",
+                            zIndex: 2,
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: "9px",
+                              fontWeight: 800,
+                              color: customThemeDraft.accentColor || "#38bdf8",
+                              letterSpacing: "0.08em",
+                              textTransform: "uppercase",
+                              marginBottom: "3px",
+                            }}
+                          >
+                            CUSTOM PREVIEW
+                          </span>
+                          <span
+                            style={{
+                              fontSize: "11px",
+                              fontWeight: customThemeDraft.fontWeight || 700,
+                              fontFamily: customThemeDraft.fontFamily || "Montserrat, sans-serif",
+                              color: customThemeDraft.textColor || "#ffffff",
+                              lineHeight: 1.3,
+                              textShadow: customThemeDraft.textShadow
+                                ? `0 2px 6px ${customThemeDraft.shadowColor || "rgba(0,0,0,0.9)"}`
+                                : "none",
+                            }}
+                          >
+                            Thy word is a lamp unto my feet, and a light unto my path.
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Theme Name */}
+                    <div>
+                      <label
+                        style={{
+                          display: "block",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          color: "#94a3b8",
+                          marginBottom: "4px",
+                        }}
+                      >
+                        Theme Name
+                      </label>
+                      <input
+                        type="text"
+                        value={customThemeDraftName}
+                        onChange={(e) => setCustomThemeDraftName(e.target.value)}
+                        style={{
+                          width: "100%",
+                          padding: "6px 10px",
+                          background: "rgba(0, 0, 0, 0.35)",
+                          border: "1px solid rgba(255, 255, 255, 0.12)",
+                          borderRadius: "6px",
+                          color: "#ffffff",
+                          fontSize: "12px",
+                          outline: "none",
+                        }}
+                      />
+                    </div>
+
+                    {/* Background Type Mode */}
+                    <div>
+                      <label
+                        style={{
+                          display: "block",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          color: "#94a3b8",
+                          marginBottom: "6px",
+                        }}
+                      >
+                        Background Mode
+                      </label>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(3, 1fr)",
+                          gap: "4px",
+                        }}
+                      >
+                        {[
+                          { id: "animated-gradient", label: "Ambient" },
+                          { id: "pattern", label: "Pattern" },
+                          { id: "gradient", label: "Gradient" },
+                          { id: "solid", label: "Solid" },
+                          { id: "image", label: "Image" },
+                        ].map((m) => {
+                          const isSel = customThemeDraft.bgType === m.id;
+                          return (
+                            <button
+                              key={m.id}
+                              onClick={() => {
+                                setCustomThemeDraft((prev) => ({
+                                  ...prev,
+                                  bgType: m.id as any,
+                                  ...(m.id === "pattern" && !prev.bgPattern
+                                    ? { bgPattern: "crosses", bgPatternColor: "#f59e0b" }
+                                    : {}),
+                                }));
+                              }}
+                              style={{
+                                padding: "6px",
+                                borderRadius: "6px",
+                                background: isSel
+                                  ? "linear-gradient(135deg, #0284c7 0%, #0369a1 100%)"
+                                  : "rgba(255, 255, 255, 0.04)",
+                                color: isSel ? "#ffffff" : "#cbd5e1",
+                                border: isSel
+                                  ? "1px solid #38bdf8"
+                                  : "1px solid rgba(255, 255, 255, 0.08)",
+                                fontSize: "11px",
+                                fontWeight: isSel ? 700 : 500,
+                                cursor: "pointer",
+                              }}
+                            >
+                              {m.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+
+                    {/* Color Customization */}
+                    <div>
+                      <label
+                        style={{
+                          display: "block",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          color: "#94a3b8",
+                          marginBottom: "6px",
+                        }}
+                      >
+                        Base Color & Tone
+                      </label>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <input
+                          type="color"
+                          value={customThemeDraft.bgColor || "#090d16"}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setCustomThemeDraft((prev) => ({
+                              ...prev,
+                              bgColor: val,
+                              bgGradient: `linear-gradient(135deg, ${val} 0%, #1e1b4b 50%, #000000 100%)`,
+                            }));
+                          }}
+                          style={{
+                            width: "36px",
+                            height: "32px",
+                            padding: 0,
+                            borderRadius: "6px",
+                            border: "1px solid rgba(255, 255, 255, 0.2)",
+                            background: "none",
+                            cursor: "pointer",
+                          }}
+                        />
+                        <input
+                          type="text"
+                          value={customThemeDraft.bgColor || "#090d16"}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setCustomThemeDraft((prev) => ({ ...prev, bgColor: val }));
+                          }}
+                          style={{
+                            flex: 1,
+                            padding: "5px 8px",
+                            background: "rgba(0, 0, 0, 0.35)",
+                            border: "1px solid rgba(255, 255, 255, 0.12)",
+                            borderRadius: "6px",
+                            color: "#ffffff",
+                            fontSize: "11px",
+                          }}
+                        />
+                      </div>
+
+                      {/* Quick Color Swatches */}
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "6px",
+                          marginTop: "8px",
+                        }}
+                      >
+                        {[
+                          { name: "Obsidian", color: "#090d16" },
+                          { name: "Candlelight", color: "#14110b" },
+                          { name: "Ocean", color: "#04161f" },
+                          { name: "Ruby", color: "#1a050d" },
+                          { name: "Amethyst", color: "#170629" },
+                          { name: "Emerald", color: "#031411" },
+                          { name: "Black", color: "#000000" },
+                        ].map((sw) => (
+                          <button
+                            key={sw.name}
+                            onClick={() => {
+                              setCustomThemeDraft((prev) => ({
+                                ...prev,
+                                bgColor: sw.color,
+                                bgGradient: `linear-gradient(135deg, ${sw.color} 0%, #1e1b4b 60%, #000000 100%)`,
+                              }));
+                            }}
+                            style={{
+                              width: "20px",
+                              height: "20px",
+                              borderRadius: "50%",
+                              background: sw.color,
+                              border:
+                                customThemeDraft.bgColor === sw.color
+                                  ? "2px solid #38bdf8"
+                                  : "1px solid rgba(255, 255, 255, 0.2)",
+                              cursor: "pointer",
+                              boxShadow: "0 1px 4px rgba(0,0,0,0.6)",
+                            }}
+                            title={sw.name}
+                          />
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Pattern Selector (when pattern or gradient mode is chosen) */}
+                    {(customThemeDraft.bgType === "pattern" ||
+                      customThemeDraft.bgType === "gradient" ||
+                      customThemeDraft.bgType === "animated-gradient") && (
+                      <div>
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            marginBottom: "6px",
+                          }}
+                        >
+                          <label
+                            style={{
+                              fontSize: "11px",
+                              fontWeight: 700,
+                              color: "#94a3b8",
+                            }}
+                          >
+                            Geometric / Sacred Pattern
+                          </label>
+                          <span style={{ fontSize: "10px", color: "#38bdf8" }}>
+                            {getPatternById(customThemeDraft.bgPattern || "")?.name || "None"}
+                          </span>
+                        </div>
+
+                        {/* Pattern Buttons Grid */}
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "repeat(2, 1fr)",
+                            gap: "5px",
+                          }}
+                        >
+                          {PATTERN_PRESETS.map((pat) => {
+                            const isPatActive = customThemeDraft.bgPattern === pat.id;
+                            return (
+                              <button
+                                key={pat.id}
+                                onClick={() => {
+                                  setCustomThemeDraft((prev) => ({
+                                    ...prev,
+                                    bgPattern: pat.id,
+                                    bgPatternColor: prev.bgPatternColor || pat.defaultColor,
+                                    bgPatternOpacity: pat.defaultOpacity,
+                                  }));
+                                }}
+                                style={{
+                                  padding: "6px 8px",
+                                  borderRadius: "6px",
+                                  background: isPatActive
+                                    ? "rgba(56, 189, 248, 0.15)"
+                                    : "rgba(255, 255, 255, 0.03)",
+                                  color: isPatActive ? "#38bdf8" : "#cbd5e1",
+                                  border: isPatActive
+                                    ? "1px solid #38bdf8"
+                                    : "1px solid rgba(255, 255, 255, 0.08)",
+                                  fontSize: "10px",
+                                  fontWeight: isPatActive ? 700 : 500,
+                                  textAlign: "left",
+                                  cursor: "pointer",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "6px",
+                                }}
+                              >
+                                <span
+                                  style={{
+                                    display: "inline-block",
+                                    width: "8px",
+                                    height: "8px",
+                                    borderRadius: "50%",
+                                    background: isPatActive ? "#38bdf8" : "rgba(255,255,255,0.3)",
+                                  }}
+                                />
+                                <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {pat.name}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+
+                        {/* Pattern Opacity Slider */}
+                        <div style={{ marginTop: "10px" }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              fontSize: "10px",
+                              color: "#94a3b8",
+                              marginBottom: "3px",
+                            }}
+                          >
+                            <span>Pattern Opacity</span>
+                            <span>{Math.round((customThemeDraft.bgPatternOpacity ?? 0.2) * 100)}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0.05"
+                            max="0.6"
+                            step="0.02"
+                            value={customThemeDraft.bgPatternOpacity ?? 0.2}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value);
+                              setCustomThemeDraft((prev) => ({ ...prev, bgPatternOpacity: val }));
+                            }}
+                            style={{ width: "100%", accentColor: "#38bdf8" }}
+                          />
+                        </div>
+
+                        {/* Pattern Scale Slider */}
+                        <div style={{ marginTop: "6px" }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              justifyContent: "space-between",
+                              fontSize: "10px",
+                              color: "#94a3b8",
+                              marginBottom: "3px",
+                            }}
+                          >
+                            <span>Pattern Scale</span>
+                            <span>{(customThemeDraft.bgPatternScale ?? 1).toFixed(1)}x</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="0.6"
+                            max="2.0"
+                            step="0.1"
+                            value={customThemeDraft.bgPatternScale ?? 1}
+                            onChange={(e) => {
+                              const val = parseFloat(e.target.value);
+                              setCustomThemeDraft((prev) => ({ ...prev, bgPatternScale: val }));
+                            }}
+                            style={{ width: "100%", accentColor: "#38bdf8" }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Image Mode Settings */}
+                    {customThemeDraft.bgType === "image" && (
+                      <div>
+                        <label
+                          style={{
+                            display: "block",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            color: "#94a3b8",
+                            marginBottom: "6px",
+                          }}
+                        >
+                          Background Image
+                        </label>
+                        <button
+                          onClick={() => bgImageInputRef.current?.click()}
+                          style={{
+                            width: "100%",
+                            padding: "8px",
+                            borderRadius: "6px",
+                            background: "rgba(168, 85, 247, 0.12)",
+                            border: "1px dashed rgba(168, 85, 247, 0.4)",
+                            color: "#c084fc",
+                            fontSize: "11px",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: "6px",
+                          }}
+                        >
+                          <Image size={13} />
+                          <span>Choose New Image File</span>
+                        </button>
+
+                        {/* Recent Uploaded Backgrounds */}
+                        {customBackgrounds.length > 0 && (
+                          <div style={{ marginTop: "8px" }}>
+                            <div
+                              style={{
+                                fontSize: "10px",
+                                color: "#94a3b8",
+                                marginBottom: "4px",
+                              }}
+                            >
+                              Recent Imported Backgrounds:
+                            </div>
+                            <div
+                              style={{
+                                display: "flex",
+                                gap: "6px",
+                                overflowX: "auto",
+                                paddingBottom: "4px",
+                              }}
+                            >
+                              {customBackgrounds.map((bgUrl, idx) => (
+                                <button
+                                  key={idx}
+                                  onClick={() =>
+                                    setCustomThemeDraft((prev) => ({
+                                      ...prev,
+                                      bgType: "image",
+                                      bgImage: bgUrl,
+                                    }))
+                                  }
+                                  style={{
+                                    width: "48px",
+                                    height: "30px",
+                                    borderRadius: "4px",
+                                    backgroundImage: `url(${bgUrl})`,
+                                    backgroundSize: "cover",
+                                    backgroundPosition: "center",
+                                    border:
+                                      customThemeDraft.bgImage === bgUrl
+                                        ? "2px solid #38bdf8"
+                                        : "1px solid rgba(255, 255, 255, 0.2)",
+                                    cursor: "pointer",
+                                    flexShrink: 0,
+                                  }}
+                                  title="Use this background image"
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Typography Settings */}
+                    <div>
+                      <label
+                        style={{
+                          display: "block",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          color: "#94a3b8",
+                          marginBottom: "6px",
+                        }}
+                      >
+                        Display Font Family
+                      </label>
+                      <select
+                        value={customThemeDraft.fontFamily || "Montserrat, sans-serif"}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setCustomThemeDraft((prev) => ({ ...prev, fontFamily: val }));
+                        }}
+                        style={{
+                          width: "100%",
+                          padding: "6px 8px",
+                          background: "rgba(0, 0, 0, 0.4)",
+                          border: "1px solid rgba(255, 255, 255, 0.12)",
+                          borderRadius: "6px",
+                          color: "#ffffff",
+                          fontSize: "11px",
+                          outline: "none",
+                        }}
+                      >
+                        <option value="Montserrat, sans-serif">Montserrat (Modern Sans)</option>
+                        <option value="Playfair Display, serif">Playfair Display (Elegant Serif)</option>
+                        <option value="Cinzel, serif">Cinzel (Sacred Classical)</option>
+                        <option value="Outfit, sans-serif">Outfit (Clean Geometric)</option>
+                        <option value="Inter, sans-serif">Inter (High-Legibility)</option>
+                        <option value="Oswald, sans-serif">Oswald (Bold Impact)</option>
+                        <option value='Georgia, "Playfair Display", serif'>Georgia (Traditional Serif)</option>
+                      </select>
+                    </div>
+
+                    {/* Text Colors */}
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                      <div>
+                        <label
+                          style={{
+                            display: "block",
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            color: "#94a3b8",
+                            marginBottom: "3px",
+                          }}
+                        >
+                          Text Color
+                        </label>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          <input
+                            type="color"
+                            value={customThemeDraft.textColor || "#ffffff"}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setCustomThemeDraft((prev) => ({ ...prev, textColor: val }));
+                            }}
+                            style={{
+                              width: "28px",
+                              height: "26px",
+                              padding: 0,
+                              borderRadius: "4px",
+                              border: "1px solid rgba(255,255,255,0.2)",
+                              background: "none",
+                              cursor: "pointer",
+                            }}
+                          />
+                          <span style={{ fontSize: "10px", color: "#cbd5e1" }}>
+                            {customThemeDraft.textColor || "#ffffff"}
+                          </span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <label
+                          style={{
+                            display: "block",
+                            fontSize: "10px",
+                            fontWeight: 700,
+                            color: "#94a3b8",
+                            marginBottom: "3px",
+                          }}
+                        >
+                          Accent Color
+                        </label>
+                        <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                          <input
+                            type="color"
+                            value={customThemeDraft.accentColor || "#38bdf8"}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setCustomThemeDraft((prev) => ({ ...prev, accentColor: val }));
+                            }}
+                            style={{
+                              width: "28px",
+                              height: "26px",
+                              padding: 0,
+                              borderRadius: "4px",
+                              border: "1px solid rgba(255,255,255,0.2)",
+                              background: "none",
+                              cursor: "pointer",
+                            }}
+                          />
+                          <span style={{ fontSize: "10px", color: "#cbd5e1" }}>
+                            {customThemeDraft.accentColor || "#38bdf8"}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Studio Actions Footer */}
+                  <div
+                    style={{
+                      padding: "12px 14px",
+                      borderTop: "1px solid rgba(255, 255, 255, 0.08)",
+                      background: "rgba(0, 0, 0, 0.4)",
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "8px",
+                    }}
+                  >
+                    <button
+                      onClick={() => handleApplyTheme(customThemeDraft, customThemeDraftName)}
+                      style={{
+                        width: "100%",
+                        padding: "8px",
+                        borderRadius: "6px",
+                        background: "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                        color: "#ffffff",
+                        border: "none",
+                        fontSize: "12px",
+                        fontWeight: 800,
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        gap: "6px",
+                        boxShadow: "0 0 14px rgba(16, 185, 129, 0.4)",
+                      }}
+                    >
+                      <Play size={12} fill="#ffffff" />
+                      <span>Apply Directly to Live & Display</span>
+                    </button>
+
+                    <div style={{ display: "flex", gap: "6px" }}>
+                      <button
+                        onClick={handleSaveCustomDraft}
+                        style={{
+                          flex: 1,
+                          padding: "6px 10px",
+                          borderRadius: "6px",
+                          background: "rgba(56, 189, 248, 0.15)",
+                          border: "1px solid rgba(56, 189, 248, 0.4)",
+                          color: "#38bdf8",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Save to Library
+                      </button>
+
+                      <button
+                        onClick={() => handlePreviewTheme(customThemeDraft, customThemeDraftName)}
+                        style={{
+                          flex: 1,
+                          padding: "6px 10px",
+                          borderRadius: "6px",
+                          background: "rgba(255, 255, 255, 0.06)",
+                          border: "1px solid rgba(255, 255, 255, 0.12)",
+                          color: "#cbd5e1",
+                          fontSize: "11px",
+                          fontWeight: 600,
+                          cursor: "pointer",
+                        }}
+                      >
+                        Preview Upper
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

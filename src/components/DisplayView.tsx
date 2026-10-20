@@ -3,6 +3,7 @@ import { AppState } from '../types';
 import { DEFAULT_SCRIPTURE_FORMATTING, DEFAULT_LYRICS_FORMATTING } from '../data/defaults';
 import { parseSlidePayload, getSlideNextSummary } from '../utils/mediaPresentationParser';
 import { Maximize2, Minimize2, Tv, Circle, AlertTriangle } from 'lucide-react';
+import { ThemeBackgroundLayer } from './ThemeBackgroundLayer';
 
 interface DisplayViewProps {
   state: AppState;
@@ -197,6 +198,8 @@ export const DisplayView: React.FC<DisplayViewProps> = ({
       : (timerState.showClockOnDisplay ?? true);
 
   const hasTopBar = !liveState.isBlackout && (showTimerWidget || showClockWidget);
+  const topHeaderRef = useRef<HTMLDivElement>(null);
+  const [headerHeight, setHeaderHeight] = useState(160);
 
   // Compute live remaining timer seconds
   let currentTimerSec = timerState.remainingSec;
@@ -218,6 +221,28 @@ export const DisplayView: React.FC<DisplayViewProps> = ({
     timerHours > 0
       ? `${isOvertime ? '-' : ''}${pad(timerHours)}:${pad(timerMins)}:${pad(timerSecs)}`
       : `${isOvertime ? '-' : ''}${pad(timerMins)}:${pad(timerSecs)}`;
+
+  // Dynamically observe top bar dimensions to ensure low section calculation is exact
+  useEffect(() => {
+    const updateHeaderHeight = () => {
+      if (topHeaderRef.current && hasTopBar) {
+        const height = topHeaderRef.current.offsetHeight;
+        if (height > 0) {
+          setHeaderHeight(height);
+        }
+      } else if (!hasTopBar) {
+        setHeaderHeight(0);
+      }
+    };
+
+    updateHeaderHeight();
+
+    if (topHeaderRef.current) {
+      const ro = new ResizeObserver(updateHeaderHeight);
+      ro.observe(topHeaderRef.current);
+      return () => ro.disconnect();
+    }
+  }, [hasTopBar, showTimerWidget, showClockWidget, isOvertime, formattedTimerStr]);
 
   // Format real-world clock time in 12-hour format (e.g. 12:26:13 PM) + Date (Sat, Sep 12, 2026)
   const realClockDate = new Date(now);
@@ -242,6 +267,7 @@ export const DisplayView: React.FC<DisplayViewProps> = ({
   const isMedia = slidePayload?.kind === 'media';
   const isPresentation = slidePayload?.kind === 'presentation';
   const isMediaOrPresentation = isMedia || isPresentation;
+  const isCoverMedia = isMedia && slidePayload?.fitMode === 'cover';
 
   const isScriptureCategory =
     !slidePayload &&
@@ -381,7 +407,7 @@ export const DisplayView: React.FC<DisplayViewProps> = ({
 
   return (
     <div
-      className={`display-canvas-root ${bgClass} ${isMouseIdle ? 'hide-cursor' : ''}`}
+      className={`display-canvas-root ${bgClass} ${isMouseIdle ? 'hide-cursor' : ''} ${isPresentation ? 'presentation-projecting hide-scrollbar' : ''}`}
       onMouseMove={handleMouseMove}
       onDoubleClick={toggleFullscreen}
       style={{
@@ -397,9 +423,18 @@ export const DisplayView: React.FC<DisplayViewProps> = ({
         padding: isMediaOrPresentation ? 0 : (effectiveOverlay || theme.displayMode === 'lower-third' ? '2.5rem 3rem' : '3.5rem 4.5rem'),
         boxSizing: 'border-box',
         transition: 'background 0.5s ease',
+        scrollbarWidth: isPresentation ? 'none' : undefined,
+        msOverflowStyle: isPresentation ? 'none' : undefined,
         ...bgStyle,
       }}
     >
+      {/* Theme Background & Pattern Overlay Layer */}
+      <ThemeBackgroundLayer
+        theme={theme}
+        isBlackout={liveState.isBlackout}
+        isOverlay={effectiveOverlay}
+      />
+
       {/* Floating Auto-Hiding Presentation HUD (Bottom Right for operator) */}
       <div className={`display-hud-controls ${showControls ? 'visible' : ''}`}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '11px', color: '#94a3b8', fontWeight: 600, paddingRight: '4px' }}>
@@ -474,8 +509,9 @@ export const DisplayView: React.FC<DisplayViewProps> = ({
       {/* 1. TOP HEADER: CYAN COUNTDOWN TIMER WITH UNDERLINE (LEFT)      */}
       {/*    + AMBER DIGITAL CLOCK & DATE (RIGHT) + HEADER DIVIDER LINE */}
       {/* ------------------------------------------------------------- */}
-      {!liveState.isBlackout && (
+      {!liveState.isBlackout && hasTopBar && (
         <div
+          ref={topHeaderRef}
           style={{
             position: 'absolute',
             top: 0,
@@ -485,7 +521,7 @@ export const DisplayView: React.FC<DisplayViewProps> = ({
             display: 'flex',
             justifyContent: 'space-between',
             alignItems: 'flex-start',
-            borderBottom: isTextCleared ? 'none' : '1px solid rgba(255, 255, 255, 0.08)',
+            borderBottom: isCoverMedia || isTextCleared ? 'none' : '1px solid rgba(255, 255, 255, 0.08)',
             zIndex: 45,
             pointerEvents: 'none',
             transition: 'border-bottom 0.3s ease',
@@ -788,37 +824,133 @@ export const DisplayView: React.FC<DisplayViewProps> = ({
               />
             </div>
           ) : null
+        ) : isMedia ? (
+          /* Media Projection (Image or Video)
+           * Cover: fills the entire display edge-to-edge.
+           * Contain: fills just the low section without the timer and counter part.
+           */
+          <div
+            style={
+              isCoverMedia
+                ? {
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    width: '100vw',
+                    height: '100vh',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    overflow: 'hidden',
+                    zIndex: 1,
+                    background: '#000000',
+                  }
+                : {
+                    position: 'absolute',
+                    top: hasTopBar ? `${headerHeight}px` : 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    width: '100vw',
+                    height: hasTopBar ? `calc(100vh - ${headerHeight}px)` : '100vh',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    overflow: 'hidden',
+                    zIndex: 1,
+                    background: '#000000',
+                  }
+            }
+          >
+            {slidePayload.mediaType === 'video' ? (
+              <video
+                key={slidePayload.mediaUrl}
+                src={slidePayload.mediaUrl}
+                autoPlay
+                loop={slidePayload.loop !== false}
+                muted={Boolean(slidePayload.muted)}
+                playsInline
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: isCoverMedia ? 'cover' : 'contain',
+                  display: 'block',
+                }}
+              />
+            ) : (
+              <img
+                key={slidePayload.mediaUrl}
+                src={slidePayload.mediaUrl}
+                alt={slidePayload.heading || state.title || 'Media Display'}
+                style={{
+                  width: '100%',
+                  height: '100%',
+                  objectFit: isCoverMedia ? 'cover' : 'contain',
+                  display: 'block',
+                }}
+              />
+            )}
+
+            {/* Optional lower title / caption if specified on media slide */}
+            {slidePayload.body && (
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: '2rem',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  background: 'rgba(0, 0, 0, 0.75)',
+                  color: '#ffffff',
+                  padding: '10px 24px',
+                  borderRadius: '12px',
+                  fontSize: '20px',
+                  fontWeight: 600,
+                  backdropFilter: 'blur(8px)',
+                  border: '1px solid rgba(255, 255, 255, 0.15)',
+                  maxWidth: '80%',
+                  textAlign: 'center',
+                  zIndex: 2,
+                }}
+              >
+                {slidePayload.body}
+              </div>
+            )}
+          </div>
         ) : (
           /* Normal Live Scripture / Worship Slide Text */
           <div
+            className={isPresentation ? 'hide-scrollbar' : undefined}
             style={{
-              maxWidth: isMediaOrPresentation ? '100%' : '1360px',
+              maxWidth: isPresentation ? '100%' : '1360px',
               width: '100%',
-              height: isMediaOrPresentation
-                ? (hasTopBar ? 'calc(100vh - 5.75rem)' : '100vh')
+              height: isPresentation
+                ? (hasTopBar ? `calc(100vh - ${headerHeight}px)` : '100vh')
                 : undefined,
-              maxHeight: isMediaOrPresentation
-                ? (hasTopBar ? 'calc(100vh - 5.75rem)' : '100vh')
+              maxHeight: isPresentation
+                ? (hasTopBar ? `calc(100vh - ${headerHeight}px)` : '100vh')
                 : undefined,
-              flex: isMediaOrPresentation ? 1 : undefined,
+              flex: isPresentation ? 1 : undefined,
               display: 'flex',
               flexDirection: 'column',
-              alignItems: isMedia
-                ? 'center'
-                : isScriptureCategory
-                  ? (scriptureFormat.textAlign === 'left' ? 'flex-start' : scriptureFormat.textAlign === 'right' ? 'flex-end' : 'center')
-                  : (lyricsFormat.textAlign === 'left' ? 'flex-start' : lyricsFormat.textAlign === 'right' ? 'flex-end' : 'center'),
-              justifyContent: isMediaOrPresentation ? 'center' : undefined,
+              alignItems: isScriptureCategory
+                ? (scriptureFormat.textAlign === 'left' ? 'flex-start' : scriptureFormat.textAlign === 'right' ? 'flex-end' : 'center')
+                : (lyricsFormat.textAlign === 'left' ? 'flex-start' : lyricsFormat.textAlign === 'right' ? 'flex-end' : 'center'),
+              justifyContent: isPresentation ? 'center' : undefined,
               textAlign: isScriptureCategory ? scriptureFormat.textAlign : lyricsFormat.textAlign,
               opacity: fading ? 0 : 1,
-              transform: isMediaOrPresentation
+              transform: isPresentation
                 ? 'none'
                 : (fading ? 'translateY(10px) scale(0.98)' : 'translateY(0) scale(1)'),
               transition: 'opacity 0.2s ease, transform 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
-              padding: isMediaOrPresentation ? '0.75rem 1.5rem' : '2rem 1.5rem',
+              padding: isPresentation ? '0.75rem 1.5rem' : '2rem 1.5rem',
               boxSizing: 'border-box',
-              marginTop: isMediaOrPresentation
-                ? (hasTopBar ? '5.75rem' : '0')
+              overflow: isPresentation ? 'hidden' : undefined,
+              scrollbarWidth: isPresentation ? 'none' : undefined,
+              msOverflowStyle: isPresentation ? 'none' : undefined,
+              marginTop: isPresentation
+                ? (hasTopBar ? `${headerHeight}px` : '0')
                 : (isScriptureCategory
                   ? (scriptureFormat.verticalAlign === 'top'
                       ? (hasTopBar ? '6.5rem' : '2.5rem')
@@ -830,7 +962,7 @@ export const DisplayView: React.FC<DisplayViewProps> = ({
                       : lyricsFormat.verticalAlign === 'bottom'
                         ? 'auto'
                         : (hasTopBar ? '5.5rem' : '0'))),
-              marginBottom: isMediaOrPresentation
+              marginBottom: isPresentation
                 ? 0
                 : (isScriptureCategory
                   ? (scriptureFormat.verticalAlign === 'bottom'
@@ -946,265 +1078,233 @@ export const DisplayView: React.FC<DisplayViewProps> = ({
                   </div>
                 )}
               </div>
-            ) : slidePayload?.kind === 'media' ? (
-              /* Media Projection (Image or Video) */
-              <div
-                style={{
-                  position: 'relative',
-                  width: '100%',
-                  height: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  overflow: 'hidden',
-                  flex: 1,
-                  boxSizing: 'border-box',
-                }}
-              >
-                {slidePayload.mediaType === 'video' ? (
-                  <video
-                    key={slidePayload.mediaUrl}
-                    src={slidePayload.mediaUrl}
-                    autoPlay
-                    loop={slidePayload.loop !== false}
-                    muted={Boolean(slidePayload.muted)}
-                    playsInline
-                    style={{
-                      maxWidth: '100%',
-                      maxHeight: '100%',
-                      width: '100%',
-                      height: '100%',
-                      objectFit: slidePayload.fitMode || 'contain',
-                      display: 'block',
-                    }}
-                  />
-                ) : (
-                  <img
-                    key={slidePayload.mediaUrl}
-                    src={slidePayload.mediaUrl}
-                    alt={slidePayload.heading || state.title || 'Media Display'}
-                    style={{
-                      maxWidth: '100%',
-                      maxHeight: '100%',
-                      width: '100%',
-                      height: '100%',
-                      objectFit: slidePayload.fitMode || 'contain',
-                      display: 'block',
-                    }}
-                  />
-                )}
-              </div>
             ) : slidePayload?.kind === 'presentation' ? (
               /* Presentation Slide / Document Page (PPTX, Word, PDF) */
-              slidePayload.docType === 'pdf' && slidePayload.pdfUrl ? (
-                <div
-                  style={{
-                    width: '100%',
-                    height: '100%',
-                    maxHeight: hasTopBar ? 'calc(100vh - 7.5rem)' : '88vh',
-                    maxWidth: '1480px',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    background: 'rgba(15, 23, 42, 0.85)',
-                    borderRadius: '16px',
-                    border: '1px solid rgba(255, 255, 255, 0.16)',
-                    overflow: 'hidden',
-                    boxShadow: '0 20px 60px rgba(0, 0, 0, 0.85)',
-                  }}
-                >
+              (() => {
+                const isPptPresentation = slidePayload.docType === 'pptx' || !slidePayload.docType;
+                return slidePayload.docType === 'pdf' && slidePayload.pdfUrl ? (
                   <div
+                    className="hide-scrollbar"
                     style={{
-                      padding: '10px 20px',
-                      background: 'rgba(2, 6, 23, 0.9)',
-                      borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+                      width: '100%',
+                      height: '100%',
+                      maxHeight: 'calc(-15.5rem + 100vh)',
+                      maxWidth: '1720px',
                       display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
+                      flexDirection: 'column',
+                      background: 'rgba(15, 23, 42, 0.85)',
+                      borderRadius: '16px',
+                      border: '1px solid rgba(255, 255, 255, 0.16)',
+                      overflow: 'hidden',
+                      boxShadow: '0 20px 60px rgba(0, 0, 0, 0.85)',
+                      scrollbarWidth: 'none',
+                      msOverflowStyle: 'none',
                     }}
                   >
-                    <span
-                      style={{
-                        fontFamily: 'Montserrat, sans-serif',
-                        fontSize: '16px',
-                        fontWeight: 800,
-                        color: '#f8fafc',
-                        letterSpacing: '0.04em',
-                      }}
-                    >
-                      {state.title}
-                    </span>
-                    <span
-                      style={{
-                        fontFamily: 'Montserrat, sans-serif',
-                        fontSize: '14px',
-                        fontWeight: 800,
-                        color: '#38bdf8',
-                        background: 'rgba(56, 189, 248, 0.15)',
-                        padding: '4px 12px',
-                        borderRadius: '999px',
-                        border: '1px solid rgba(56, 189, 248, 0.35)',
-                      }}
-                    >
-                      PAGE {slidePayload.pageNumber || state.cur + 1} OF {slidePayload.totalPages || state.lines.length}
-                    </span>
-                  </div>
-                  <div style={{ flex: 1, position: 'relative', background: '#ffffff' }}>
-                    <iframe
-                      key={`${slidePayload.pdfUrl}-page-${slidePayload.pageNumber || state.cur + 1}`}
-                      src={`${slidePayload.pdfUrl}#page=${slidePayload.pageNumber || state.cur + 1}&view=Fit&toolbar=0&navpanes=0&scrollbar=0`}
-                      title={slidePayload.heading || `Page ${slidePayload.pageNumber || 1}`}
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        border: 'none',
-                      }}
-                    />
-                  </div>
-                </div>
-              ) : (
-                <div
-                  style={{
-                    width: '100%',
-                    maxWidth: '1420px',
-                    maxHeight: hasTopBar ? 'calc(100vh - 7.5rem)' : '88vh',
-                    background: 'rgba(15, 23, 42, 0.72)',
-                    backdropFilter: 'blur(16px)',
-                    border: '1px solid rgba(255, 255, 255, 0.15)',
-                    borderRadius: '24px',
-                    padding: '2.5rem 3.5rem',
-                    boxShadow: '0 24px 60px rgba(0, 0, 0, 0.75)',
-                    display: 'flex',
-                    flexDirection: 'column',
-                    gap: '1.5rem',
-                    textAlign: 'left',
-                    overflow: 'auto',
-                  }}
-                >
-                  {/* Top Badge: Slide / Page Number + Document Title */}
-                  <div
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      borderBottom: '1px solid rgba(255, 255, 255, 0.12)',
-                      paddingBottom: '1rem',
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontFamily: 'Montserrat, sans-serif',
-                        fontSize: 'clamp(14px, 1.4vw, 20px)',
-                        fontWeight: 800,
-                        color: slidePayload.docType === 'pptx' ? '#fb923c' : '#38bdf8',
-                        letterSpacing: '0.08em',
-                        textTransform: 'uppercase',
-                      }}
-                    >
-                      {state.title}
-                    </span>
-                    <span
-                      style={{
-                        fontFamily: 'Montserrat, sans-serif',
-                        fontSize: 'clamp(13px, 1.2vw, 17px)',
-                        fontWeight: 800,
-                        color: '#e2e8f0',
-                        background: 'rgba(255, 255, 255, 0.1)',
-                        padding: '4px 14px',
-                        borderRadius: '999px',
-                      }}
-                    >
-                      {slidePayload.docType === 'pptx' ? 'SLIDE' : 'PAGE'} {slidePayload.pageNumber || state.cur + 1} / {slidePayload.totalPages || state.lines.length}
-                    </span>
-                  </div>
-
-                  {/* Slide / Page Heading */}
-                  {slidePayload.heading && (
                     <div
                       style={{
-                        fontFamily: lyricsFormat.titleFontFamily || theme.fontFamily || 'Montserrat, sans-serif',
-                        fontSize: 'clamp(32px, 3.8vw, 56px)',
-                        fontWeight: 900,
-                        color: '#ffffff',
-                        lineHeight: 1.2,
-                        textShadow: combinedTextShadow,
+                        padding: '10px 20px',
+                        background: 'rgba(2, 6, 23, 0.9)',
+                        borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
                       }}
                     >
-                      {slidePayload.heading}
+                      <span
+                        style={{
+                          fontFamily: 'Montserrat, sans-serif',
+                          fontSize: '16px',
+                          fontWeight: 800,
+                          color: '#f8fafc',
+                          letterSpacing: '0.04em',
+                        }}
+                      >
+                        {state.title}
+                      </span>
+                      <span
+                        style={{
+                          fontFamily: 'Montserrat, sans-serif',
+                          fontSize: '14px',
+                          fontWeight: 800,
+                          color: '#38bdf8',
+                          background: 'rgba(56, 189, 248, 0.15)',
+                          padding: '4px 12px',
+                          borderRadius: '999px',
+                          border: '1px solid rgba(56, 189, 248, 0.35)',
+                        }}
+                      >
+                        PAGE {slidePayload.pageNumber || state.cur + 1} OF {slidePayload.totalPages || state.lines.length}
+                      </span>
                     </div>
-                  )}
-
-                  {/* Content Area: Text + Optional Embedded Slide/Page Image */}
+                    <div style={{ flex: 1, position: 'relative', background: '#ffffff' }}>
+                      <iframe
+                        key={`${slidePayload.pdfUrl}-page-${slidePayload.pageNumber || state.cur + 1}`}
+                        src={`${slidePayload.pdfUrl}#page=${slidePayload.pageNumber || state.cur + 1}&view=Fit&toolbar=0&navpanes=0&scrollbar=0`}
+                        title={slidePayload.heading || `Page ${slidePayload.pageNumber || 1}`}
+                        style={{
+                          width: '100%',
+                          height: '100%',
+                          border: 'none',
+                        }}
+                      />
+                    </div>
+                  </div>
+                ) : (
                   <div
+                    className="hide-scrollbar"
                     style={{
-                      display: 'flex',
-                      flexDirection: slidePayload.imageUrl && (slidePayload.body || (slidePayload.bullets && slidePayload.bullets.length > 0)) ? 'row' : 'column',
-                      alignItems: 'center',
-                      gap: '2.5rem',
                       width: '100%',
+                      maxWidth: '1720px',
+                      maxHeight: 'calc(-15.5rem + 100vh)',
+                      background: 'rgba(15, 23, 42, 0.72)',
+                      backdropFilter: 'blur(16px)',
+                      border: '1px solid rgba(255, 255, 255, 0.15)',
+                      borderRadius: '24px',
+                      padding: '2.5rem 3.5rem',
+                      boxShadow: '0 24px 60px rgba(0, 0, 0, 0.75)',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '1.5rem',
+                      textAlign: 'left',
+                      overflow: 'auto',
+                      scrollbarWidth: 'none',
+                      msOverflowStyle: 'none',
                     }}
                   >
-                    {(slidePayload.bullets && slidePayload.bullets.length > 0) || slidePayload.body ? (
+                    {/* Top Badge: Slide / Page Number + Document Title */}
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        borderBottom: '1px solid rgba(255, 255, 255, 0.12)',
+                        paddingBottom: '1rem',
+                      }}
+                    >
+                      <span
+                        style={{
+                          fontFamily: 'Montserrat, sans-serif',
+                          fontSize: 'clamp(14px, 1.4vw, 20px)',
+                          fontWeight: 800,
+                          color: slidePayload.docType === 'pptx' ? '#fb923c' : '#38bdf8',
+                          letterSpacing: '0.08em',
+                          textTransform: 'uppercase',
+                        }}
+                      >
+                        {state.title}
+                      </span>
+                      <span
+                        style={{
+                          fontFamily: 'Montserrat, sans-serif',
+                          fontSize: 'clamp(13px, 1.2vw, 17px)',
+                          fontWeight: 800,
+                          color: '#e2e8f0',
+                          background: 'rgba(255, 255, 255, 0.1)',
+                          padding: '4px 14px',
+                          borderRadius: '999px',
+                        }}
+                      >
+                        {slidePayload.docType === 'pptx' ? 'SLIDE' : 'PAGE'} {slidePayload.pageNumber || state.cur + 1} / {slidePayload.totalPages || state.lines.length}
+                      </span>
+                    </div>
+
+                    {/* Slide / Page Heading */}
+                    {slidePayload.heading && (
                       <div
                         style={{
-                          flex: 1,
-                          fontFamily: lyricsFormat.bodyFontFamily || theme.fontFamily || 'Inter, sans-serif',
-                          fontSize:
-                            (slidePayload.body || '').length > 350
+                          fontFamily: lyricsFormat.titleFontFamily || theme.fontFamily || 'Montserrat, sans-serif',
+                          fontSize: isPptPresentation
+                            ? 'clamp(20px, 2.2vw, 28px)'
+                            : 'clamp(32px, 3.8vw, 56px)',
+                          fontWeight: 900,
+                          color: '#ffffff',
+                          lineHeight: 1.2,
+                          textShadow: combinedTextShadow,
+                        }}
+                      >
+                        {slidePayload.heading}
+                      </div>
+                    )}
+
+                    {/* Content Area: Text + Optional Embedded Slide/Page Image */}
+                    <div
+                      style={{
+                        display: 'flex',
+                        flexDirection: slidePayload.imageUrl && (slidePayload.body || (slidePayload.bullets && slidePayload.bullets.length > 0)) ? 'row' : 'column',
+                        alignItems: 'center',
+                        gap: '2.5rem',
+                        width: '100%',
+                      }}
+                    >
+                      {(slidePayload.bullets && slidePayload.bullets.length > 0) || slidePayload.body ? (
+                        <div
+                          style={{
+                            flex: 1,
+                            fontFamily: lyricsFormat.bodyFontFamily || theme.fontFamily || 'Inter, sans-serif',
+                            fontSize: isPptPresentation
+                              ? (slidePayload.body || '').length > 350
+                                ? 'clamp(18px, 1.8vw, 22px)'
+                                : (slidePayload.body || '').length > 180
+                                ? 'clamp(20px, 2.0vw, 25px)'
+                                : 'clamp(22px, 2.2vw, 28px)'
+                              : (slidePayload.body || '').length > 350
                               ? 'clamp(22px, 2.3vw, 34px)'
                               : (slidePayload.body || '').length > 180
                               ? 'clamp(26px, 2.8vw, 42px)'
                               : 'clamp(30px, 3.3vw, 50px)',
-                          fontWeight: 600,
-                          color: '#f8fafc',
-                          lineHeight: 1.48,
-                          textShadow: combinedTextShadow,
-                          whiteSpace: 'pre-line',
-                          display: 'flex',
-                          flexDirection: 'column',
-                          gap: '0.85rem',
-                        }}
-                      >
-                        {slidePayload.bullets && slidePayload.bullets.length > 0 ? (
-                          slidePayload.bullets.map((b, bIdx) => (
-                            <div key={bIdx} style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
-                              {!b.startsWith('•') && slidePayload.docType === 'pptx' && (
-                                <span style={{ color: '#fb923c', fontWeight: 900 }}>•</span>
-                              )}
-                              <span>{b}</span>
-                            </div>
-                          ))
-                        ) : (
-                          <div>{slidePayload.body}</div>
-                        )}
-                      </div>
-                    ) : null}
-
-                    {slidePayload.imageUrl && (
-                      <div
-                        style={{
-                          flex: slidePayload.body || (slidePayload.bullets && slidePayload.bullets.length > 0) ? '0 0 42%' : '1',
-                          maxHeight: '52vh',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                        }}
-                      >
-                        <img
-                          src={slidePayload.imageUrl}
-                          alt={slidePayload.heading || 'Slide graphic'}
-                          style={{
-                            maxWidth: '100%',
-                            maxHeight: '50vh',
-                            borderRadius: '14px',
-                            objectFit: 'contain',
-                            boxShadow: '0 12px 32px rgba(0, 0, 0, 0.65)',
+                            fontWeight: 600,
+                            color: '#f8fafc',
+                            lineHeight: 1.48,
+                            textShadow: combinedTextShadow,
+                            whiteSpace: 'pre-line',
+                            display: 'flex',
+                            flexDirection: 'column',
+                            gap: '0.85rem',
                           }}
-                        />
-                      </div>
-                    )}
+                        >
+                          {slidePayload.bullets && slidePayload.bullets.length > 0 ? (
+                            slidePayload.bullets.map((b, bIdx) => (
+                              <div key={bIdx} style={{ display: 'flex', alignItems: 'flex-start', gap: '14px' }}>
+                                {!b.startsWith('•') && slidePayload.docType === 'pptx' && (
+                                  <span style={{ color: '#fb923c', fontWeight: 900 }}>•</span>
+                                )}
+                                <span>{b}</span>
+                              </div>
+                            ))
+                          ) : (
+                            <div>{slidePayload.body}</div>
+                          )}
+                        </div>
+                      ) : null}
+
+                      {slidePayload.imageUrl && (
+                        <div
+                          style={{
+                            flex: slidePayload.body || (slidePayload.bullets && slidePayload.bullets.length > 0) ? '0 0 42%' : '1',
+                            maxHeight: '52vh',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                          }}
+                        >
+                          <img
+                            src={slidePayload.imageUrl}
+                            alt={slidePayload.heading || 'Slide graphic'}
+                            style={{
+                              maxWidth: '100%',
+                              maxHeight: '50vh',
+                              borderRadius: '14px',
+                              objectFit: 'contain',
+                              boxShadow: '0 12px 32px rgba(0, 0, 0, 0.65)',
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
                   </div>
-                </div>
-              )
+                );
+              })()
             ) : (
               /* General Song / Hymn Slide Text */
               <div

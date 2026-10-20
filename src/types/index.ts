@@ -1,6 +1,6 @@
 export type TextAlignment = 'left' | 'center' | 'right';
 export type VerticalAlignment = 'top' | 'center' | 'bottom';
-export type BackgroundType = 'solid' | 'gradient' | 'animated-gradient' | 'transparent';
+export type BackgroundType = 'solid' | 'gradient' | 'animated-gradient' | 'transparent' | 'pattern' | 'image';
 export type DisplayMode = 'fullscreen' | 'lower-third';
 
 export type PresenterLayout = 'easyworship' | 'quickdeck' | 'classic';
@@ -34,6 +34,12 @@ export interface PresentationTheme {
   bgGradient: string; // CSS gradient string
   bgAnimationSpeed: number; // in seconds, e.g. 15
   bgOverlayOpacity: number; // 0 to 1
+  bgPattern?: string; // Pattern ID e.g. 'crosses' | 'dots' | 'grid' | 'hexagons' | 'stained-glass' | 'constellations' | 'waves' | 'stripes' | 'damask' | 'bokeh'
+  bgPatternColor?: string; // Pattern stroke/fill color
+  bgPatternOpacity?: number; // 0 to 1
+  bgPatternScale?: number; // scale multiplier e.g. 1
+  bgImage?: string; // Data URL or Image URL
+  bgImageFit?: 'cover' | 'contain';
   
   // Layout mode
   displayMode: DisplayMode;

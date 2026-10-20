@@ -57,6 +57,7 @@ import {
 import { SongBankEditorModal, SongBankEditorItem } from "./SongBankEditorModal";
 import { FormatSettingsModal } from "./FormatSettingsModal";
 import { EasyWorshipWorkspace } from "./EasyWorshipWorkspace";
+import { ThemeBackgroundLayer } from "./ThemeBackgroundLayer";
 
 export interface OnlineSongResult {
   id: string;
@@ -5470,95 +5471,117 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
           </div>
 
           {/* 16:9 Mini Screen Monitor reproducing DisplayView */}
-          <div
-            style={{
-              width: "100%",
-              aspectRatio: "16 / 9",
-              background: state.liveState.isBlackout
-                ? "#000000"
-                : "radial-gradient(ellipse at center, #1e293b 0%, #0f172a 70%, #020617 100%)",
-              borderRadius: "10px",
-              border: "1.5px solid rgba(56, 189, 248, 0.35)",
-              boxShadow:
-                "0 10px 25px rgba(0, 0, 0, 0.7), inset 0 0 20px rgba(0, 0, 0, 0.8)",
-              display: "flex",
-              flexDirection: "column",
-              justifyContent: "space-between",
-              padding: "12px 14px",
-              position: "relative",
-              overflow: "hidden",
-            }}
-          >
-            {/* Top Bar on Screen: Cyan Countdown Timer + Underline (Left) & Real Clock (Right) */}
-            {!state.liveState.isBlackout && (
+          {(() => {
+            const activeLiveLine =
+              state.lines[state.cur] ||
+              (activeTab === "lyrics"
+                ? lyricSlides[selectedLyricSlideIndex]
+                : generatedSlides[selectedSlideIndex]) ||
+              "";
+            const activeLiveSlidePayload = parseSlidePayload(activeLiveLine);
+            const isLiveMedia = activeLiveSlidePayload?.kind === "media";
+            const isLiveCoverMedia = isLiveMedia && activeLiveSlidePayload?.fitMode === "cover";
+
+            return (
               <div
                 style={{
+                  width: "100%",
+                  aspectRatio: "16 / 9",
+                  background: state.liveState.isBlackout
+                    ? "#000000"
+                    : "radial-gradient(ellipse at center, #1e293b 0%, #0f172a 70%, #020617 100%)",
+                  borderRadius: "10px",
+                  border: "1.5px solid rgba(56, 189, 248, 0.35)",
+                  boxShadow:
+                    "0 10px 25px rgba(0, 0, 0, 0.7), inset 0 0 20px rgba(0, 0, 0, 0.8)",
                   display: "flex",
+                  flexDirection: "column",
                   justifyContent: "space-between",
-                  alignItems: "flex-start",
-                  borderBottom:
-                    state.liveState.isClearText || !state.lines[state.cur]
-                      ? "none"
-                      : "1px solid rgba(255, 255, 255, 0.08)",
-                  paddingBottom: "4px",
+                  padding: isLiveCoverMedia ? 0 : "12px 14px",
+                  position: "relative",
+                  overflow: "hidden",
                 }}
               >
-                {/* Top Left Countdown Timer - only shown when text is active */}
-                {state.timerState.showOnDisplay &&
-                (state.timerState.status !== "idle" ||
-                  currentTimerSec > 0 ||
-                  state.timerState.durationSec > 0) &&
-                !state.liveState.isClearText &&
-                Boolean(state.lines[state.cur]) ? (
-                  <div style={{ display: "flex", flexDirection: "column" }}>
-                    <span
-                      style={{
-                        fontFamily: "Montserrat, sans-serif",
-                        fontSize: `${Math.round(18 * Math.max(0.6, Math.min(2.0, (state.timerState.fontSizeScale || 100) / 100)))}px`,
-                        fontWeight: 900,
-                        color: isOvertime
-                          ? "#ef4444"
-                          : isCritical
-                            ? "#f97316"
-                            : isWarning
-                              ? "#f59e0b"
-                              : "#60a5fa",
-                        lineHeight: 1,
-                      }}
-                    >
-                      {formattedCountdown}
-                    </span>
-                    <div
-                      style={{
-                        height: "2px",
-                        width: "100%",
-                        background: isOvertime ? "#ef4444" : "#60a5fa",
-                        marginTop: "2px",
-                      }}
-                    />
-                  </div>
-                ) : (
-                  <div />
-                )}
+                {/* Real Theme Background Layer in Quick Deck Live Monitor */}
+                <ThemeBackgroundLayer
+                  theme={state.theme}
+                  isBlackout={state.liveState.isBlackout}
+                />
 
-                {/* Top Right Digital Clock */}
-                <div style={{ textAlign: "right" }}>
-                  <span
+                {/* Top Bar on Screen: Cyan Countdown Timer + Underline (Left) & Real Clock (Right) */}
+                {!state.liveState.isBlackout && (
+                  <div
                     style={{
-                      fontFamily: "Montserrat, sans-serif",
-                      fontSize: "11px",
-                      fontWeight: 800,
-                      color: "#f59e0b",
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "flex-start",
+                      position: "relative",
+                      zIndex: 3,
+                      borderBottom:
+                        isLiveCoverMedia || state.liveState.isClearText || !state.lines[state.cur]
+                          ? "none"
+                          : "1px solid rgba(255, 255, 255, 0.08)",
+                      padding: isLiveCoverMedia ? "10px 14px 4px 14px" : "0 0 4px 0",
+                      width: "100%",
+                      boxSizing: "border-box",
                     }}
                   >
-                    {new Date(now).toLocaleTimeString("en-US", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </span>
-                </div>
-              </div>
-            )}
+                    {/* Top Left Countdown Timer - only shown when text is active */}
+                    {state.timerState.showOnDisplay &&
+                    (state.timerState.status !== "idle" ||
+                      currentTimerSec > 0 ||
+                      state.timerState.durationSec > 0) &&
+                    !state.liveState.isClearText &&
+                    Boolean(state.lines[state.cur]) ? (
+                      <div style={{ display: "flex", flexDirection: "column" }}>
+                        <span
+                          style={{
+                            fontFamily: "Montserrat, sans-serif",
+                            fontSize: `${Math.round(18 * Math.max(0.6, Math.min(2.0, (state.timerState.fontSizeScale || 100) / 100)))}px`,
+                            fontWeight: 900,
+                            color: isOvertime
+                              ? "#ef4444"
+                              : isCritical
+                                ? "#f97316"
+                                : isWarning
+                                  ? "#f59e0b"
+                                  : "#60a5fa",
+                            lineHeight: 1,
+                          }}
+                        >
+                          {formattedCountdown}
+                        </span>
+                        <div
+                          style={{
+                            height: "2px",
+                            width: "100%",
+                            background: isOvertime ? "#ef4444" : "#60a5fa",
+                            marginTop: "2px",
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      <div />
+                    )}
+
+                    {/* Top Right Digital Clock */}
+                    <div style={{ textAlign: "right" }}>
+                      <span
+                        style={{
+                          fontFamily: "Montserrat, sans-serif",
+                          fontSize: "11px",
+                          fontWeight: 800,
+                          color: "#f59e0b",
+                        }}
+                      >
+                        {new Date(now).toLocaleTimeString("en-US", {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                        })}
+                      </span>
+                    </div>
+                  </div>
+                )}
 
             {/* Center: Live Scripture Text OR Centered Hero Timer when text cleared */}
             {!state.liveState.isBlackout &&
@@ -5625,10 +5648,13 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                       ? (state.theme.scripture?.textAlign || 'center')
                       : (state.theme.lyrics?.textAlign || 'center'),
                     width: "100%",
-                    flex: 1,
+                    flex: isLiveCoverMedia ? undefined : 1,
                     minHeight: 0,
-                    padding: "4px",
+                    padding: isLiveCoverMedia ? 0 : "4px",
                     overflow: "hidden",
+                    position: isLiveCoverMedia ? "absolute" : "relative",
+                    inset: isLiveCoverMedia ? 0 : undefined,
+                    zIndex: isLiveCoverMedia ? 1 : 2,
                   }}
                 >
                   {(() => {
@@ -5640,19 +5666,23 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                     
                     const slidePayload = parseSlidePayload(rawLine);
                     if (slidePayload?.kind === 'media') {
+                      const isCover = slidePayload.fitMode === 'cover';
                       return (
                         <div
                           style={{
                             width: "100%",
                             height: "100%",
-                            minHeight: "130px",
-                            position: "relative",
+                            minHeight: isCover ? undefined : "130px",
+                            position: isCover ? "absolute" : "relative",
+                            inset: isCover ? 0 : undefined,
                             display: "flex",
                             alignItems: "center",
                             justifyContent: "center",
                             overflow: "hidden",
-                            borderRadius: "6px",
+                            borderRadius: isCover ? "0px" : "6px",
                             background: "#000000",
+                            zIndex: isCover ? 1 : 2,
+                            flex: isCover ? undefined : 1,
                           }}
                         >
                           {slidePayload.mediaType === 'video' ? (
@@ -5666,7 +5696,7 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                               style={{
                                 width: "100%",
                                 height: "100%",
-                                objectFit: slidePayload.fitMode || "contain",
+                                objectFit: isCover ? "cover" : "contain",
                                 display: "block",
                               }}
                             />
@@ -5678,7 +5708,7 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                               style={{
                                 width: "100%",
                                 height: "100%",
-                                objectFit: slidePayload.fitMode || "contain",
+                                objectFit: isCover ? "cover" : "contain",
                                 display: "block",
                               }}
                             />
@@ -5698,6 +5728,7 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                               textTransform: "uppercase",
                               backdropFilter: "blur(4px)",
                               border: "1px solid rgba(56, 189, 248, 0.3)",
+                              zIndex: 5,
                             }}
                           >
                             {slidePayload.mediaType === 'video' ? '🎬 Live Video' : '🖼️ Live Image'}
@@ -5859,7 +5890,7 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
               ))}
 
             {/* Bottom Citation & Status */}
-            {!state.liveState.isBlackout && (
+            {!state.liveState.isBlackout && !isLiveCoverMedia && (
               <div
                 style={{
                   display: "flex",
@@ -5867,6 +5898,8 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                   alignItems: "center",
                   borderTop: "1px solid rgba(255, 255, 255, 0.08)",
                   paddingTop: "4px",
+                  position: "relative",
+                  zIndex: 2,
                 }}
               >
                 <span
@@ -5888,6 +5921,8 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
               </div>
             )}
           </div>
+        );
+      })()}
 
           {/* Quick Help & Status Card */}
           <div
