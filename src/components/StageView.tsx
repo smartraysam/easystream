@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { AppState } from '../types';
+import { getSlideReadableText } from '../utils/mediaPresentationParser';
 import { Clock, Mic2, Maximize2, Minimize2 } from 'lucide-react';
 
 interface StageViewProps {
@@ -12,7 +13,7 @@ export const StageView: React.FC<StageViewProps> = ({ state, progress }) => {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(false);
   const [isMouseIdle, setIsMouseIdle] = useState(false);
-  const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const updateTime = () => {
@@ -114,8 +115,8 @@ export const StageView: React.FC<StageViewProps> = ({ state, progress }) => {
     }, 2500);
   }, []);
 
-  const currentLine = state.lines[state.cur] || '';
-  const nextLine = state.lines[state.cur + 1] || '';
+  const currentLine = getSlideReadableText(state.lines[state.cur] || '');
+  const nextLine = getSlideReadableText(state.lines[state.cur + 1] || '');
 
   return (
     <div

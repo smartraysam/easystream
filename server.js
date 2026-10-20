@@ -10,18 +10,28 @@ import {
   getLyricsConfig,
   saveLyricsConfig,
 } from "./services/lyricsService.js";
+import {
+  parsePptxBuffer,
+  parseDocxBuffer,
+  parsePdfBuffer,
+  parseLegacyOfficeBuffer,
+} from "./services/mediaPresentationService.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PORT = process.env.PORT || 3004;
 const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, "data");
+const UPLOADS_DIR = path.join(DATA_DIR, "uploads");
 const STORE_PATH = path.join(DATA_DIR, "store.json");
 const DIST_DIR = path.join(__dirname, "dist");
 const PUBLIC_DIR = path.join(__dirname, "public");
 
 if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 }
 
 const DEFAULT_SCRIPTURE_FORMATTING = {
@@ -792,6 +802,15 @@ const MIME = {
   ".svg": "image/svg+xml",
   ".png": "image/png",
   ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".mp4": "video/mp4",
+  ".m4v": "video/mp4",
+  ".webm": "video/webm",
+  ".mov": "video/quicktime",
+  ".ogg": "video/ogg",
+  ".pdf": "application/pdf",
   ".json": "application/json; charset=utf-8",
   ".webmanifest": "application/manifest+json; charset=utf-8",
 };
@@ -1134,6 +1153,197 @@ const server = http.createServer((req, res) => {
     resetAllSessionsToDefault();
     res.writeHead(200, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
     res.end(JSON.stringify({ status: "ok", message: "All sessions cleared and reset to default presets." }));
+    return;
+  }
+
+  // CORS preflight for uploads
+  if (req.method === "OPTIONS" && (pathname.startsWith("/api/media/") || pathname.startsWith("/api/presentations/") || pathname.startsWith("/api/uploads/"))) {
+    res.writeHead(204, {
+      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Methods": "GET, POST, DELETE, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type, X-File-Name",
+    });
+    res.end();
+    return;
+  }
+
+  // Serve uploaded media & presentation assets with HTTP Range support (for video streaming & PDF viewer)
+  if (pathname.startsWith("/api/uploads/") || pathname.startsWith("/uploads/")) {
+    const rawFile = decodeURIComponent(
+      pathname.replace(/^\/api\/uploads\//, "").replace(/^\/uploads\//, "")
+    );
+    const safeFile = path.basename(rawFile);
+    const targetPath = path.join(UPLOADS_DIR, safeFile);
+
+    if (!fs.existsSync(targetPath) || fs.statSync(targetPath).isDirectory()) {
+      res.writeHead(404, { "Content-Type": "application/json", "Access-Control-Allow-Origin": "*" });
+      res.end(JSON.stringify({ error: "Uploaded asset not found" }));
+      return;
+    }
+
+    const stat = fs.statSync(targetPath);
+    const ext = path.extname(safeFile).toLowerCase();
+    const contentType = MIME[ext] || "application/octet-stream";
+    const range = req.headers.range;
+
+    if (range) {
+      const parts = range.replace(/bytes=/, "").split("-");
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : stat.size - 1;
+      if (start >= stat.size || end >= stat.size) {
+        res.writeHead(416, { "Content-Range": `bytes */${stat.size}` });
+        res.end();
+        return;
+      }
+      const chunksize = end - start + 1;
+      const fileStream = fs.createReadStream(targetPath, { start, end });
+      res.writeHead(206, {
+        "Content-Range": `bytes ${start}-${end}/${stat.size}`,
+        "Accept-Ranges": "bytes",
+        "Content-Length": chunksize,
+        "Content-Type": contentType,
+        "Access-Control-Allow-Origin": "*",
+      });
+      fileStream.pipe(res);
+      return;
+    }
+
+    res.writeHead(200, {
+      "Content-Length": stat.size,
+      "Content-Type": contentType,
+      "Accept-Ranges": "bytes",
+      "Access-Control-Allow-Origin": "*",
+      "Cache-Control": "public, max-age=86400",
+    });
+    fs.createReadStream(targetPath).pipe(res);
+    return;
+  }
+
+  // Media Upload Endpoint (Images & Videos)
+  if (pathname === "/api/media/upload" && req.method === "POST") {
+    const rawName =
+      parsedUrl.searchParams.get("filename") ||
+      req.headers["x-file-name"] ||
+      `media_${Date.now()}.png`;
+    const ext = path.extname(String(rawName)).toLowerCase() || ".png";
+    const baseTitle = path.basename(String(rawName), ext);
+    const safeName = `${baseTitle.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 50)}_${Date.now()}${ext}`;
+    const destPath = path.join(UPLOADS_DIR, safeName);
+
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      try {
+        const buffer = Buffer.concat(chunks);
+        fs.writeFileSync(destPath, buffer);
+        const isVideo = /\.(mp4|webm|mov|m4v|ogg|avi|mkv)$/i.test(ext);
+        const url = `/api/uploads/${safeName}`;
+        res.writeHead(200, {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        });
+        res.end(
+          JSON.stringify({
+            status: "ok",
+            url,
+            fileName: safeName,
+            title: baseTitle,
+            mediaType: isVideo ? "video" : "image",
+            size: buffer.length,
+          })
+        );
+      } catch (err) {
+        console.error("Media upload error:", err);
+        res.writeHead(500, {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        });
+        res.end(JSON.stringify({ error: "Failed to save media file" }));
+      }
+    });
+    return;
+  }
+
+  // Presentation Upload & Slide/Page Extraction Endpoint (PPTX, PPT, DOCX, DOC, PDF)
+  if (pathname === "/api/presentations/upload" && req.method === "POST") {
+    const rawName =
+      parsedUrl.searchParams.get("filename") ||
+      req.headers["x-file-name"] ||
+      `presentation_${Date.now()}.pptx`;
+    const ext = path.extname(String(rawName)).toLowerCase();
+    const baseTitle = path.basename(String(rawName), ext);
+    const safeName = `${baseTitle.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 50)}_${Date.now()}${ext}`;
+    const destPath = path.join(UPLOADS_DIR, safeName);
+
+    const chunks = [];
+    req.on("data", (chunk) => chunks.push(chunk));
+    req.on("end", () => {
+      try {
+        const buffer = Buffer.concat(chunks);
+        fs.writeFileSync(destPath, buffer);
+        const fileUrl = `/api/uploads/${safeName}`;
+
+        let docType = "pptx";
+        let slides = [];
+
+        if (ext === ".pptx") {
+          docType = "pptx";
+          slides = parsePptxBuffer(buffer, UPLOADS_DIR, baseTitle);
+        } else if (ext === ".docx") {
+          docType = "docx";
+          slides = parseDocxBuffer(buffer, UPLOADS_DIR, baseTitle);
+        } else if (ext === ".pdf") {
+          docType = "pdf";
+          slides = parsePdfBuffer(buffer, fileUrl, baseTitle);
+        } else if (ext === ".ppt" || ext === ".doc") {
+          docType = ext === ".ppt" ? "pptx" : "docx";
+          slides = parseLegacyOfficeBuffer(buffer, ext, baseTitle);
+        } else {
+          // Plain text fallback
+          docType = "docx";
+          const text = buffer.toString("utf8");
+          const parts = text
+            .split(/\n\s*\n/)
+            .map((p) => p.trim())
+            .filter(Boolean);
+          slides = (parts.length > 0 ? parts : [baseTitle]).map((body, idx, arr) => ({
+            kind: "presentation",
+            docType: "docx",
+            pageNumber: idx + 1,
+            totalPages: arr.length,
+            heading: `${baseTitle} — Page ${idx + 1}`,
+            body,
+          }));
+        }
+
+        res.writeHead(200, {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        });
+        res.end(
+          JSON.stringify({
+            status: "ok",
+            url: fileUrl,
+            fileName: safeName,
+            title: baseTitle,
+            docType,
+            slides,
+            totalPages: slides.length,
+          })
+        );
+      } catch (err) {
+        console.error("Presentation upload/parse error:", err);
+        res.writeHead(500, {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+        });
+        res.end(
+          JSON.stringify({
+            error: err?.message || "Failed to parse presentation file",
+          })
+        );
+      }
+    });
     return;
   }
 

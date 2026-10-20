@@ -48,6 +48,7 @@ import {
   AVAILABLE_BIBLE_VERSIONS,
 } from "../data/bibleBooks";
 import { parseLyricsToSlides } from "../utils/lyricParser";
+import { getSlideReadableText, parseSlidePayload } from "../utils/mediaPresentationParser";
 import {
   getLyricSuggestions,
   LyricSuggestion,
@@ -2042,6 +2043,7 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
           onUpdateLiveState={onUpdateLiveState}
           onUpdateTheme={onUpdateTheme}
           onSaveLibraryItem={onSaveLibraryItem}
+          onDeleteLibraryItem={onDeleteLibraryItem}
           onAddToSchedule={onAddToSchedule}
           onUpdateSchedule={onUpdateSchedule}
           onRemoveFromSchedule={onRemoveFromSchedule}
@@ -5623,16 +5625,150 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                       ? (state.theme.scripture?.textAlign || 'center')
                       : (state.theme.lyrics?.textAlign || 'center'),
                     width: "100%",
+                    flex: 1,
+                    minHeight: 0,
                     padding: "4px",
                     overflow: "hidden",
                   }}
                 >
                   {(() => {
-                    const rawText = state.lines[state.cur] ||
+                    const rawLine = state.lines[state.cur] ||
                       (activeTab === "lyrics"
                         ? lyricSlides[selectedLyricSlideIndex]
                         : generatedSlides[selectedSlideIndex]) ||
                       "No content active";
+                    
+                    const slidePayload = parseSlidePayload(rawLine);
+                    if (slidePayload?.kind === 'media') {
+                      return (
+                        <div
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            minHeight: "130px",
+                            position: "relative",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            overflow: "hidden",
+                            borderRadius: "6px",
+                            background: "#000000",
+                          }}
+                        >
+                          {slidePayload.mediaType === 'video' ? (
+                            <video
+                              key={slidePayload.mediaUrl}
+                              src={slidePayload.mediaUrl}
+                              autoPlay
+                              loop
+                              muted
+                              playsInline
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                objectFit: slidePayload.fitMode || "contain",
+                                display: "block",
+                              }}
+                            />
+                          ) : (
+                            <img
+                              key={slidePayload.mediaUrl}
+                              src={slidePayload.mediaUrl}
+                              alt="Media Projection"
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                objectFit: slidePayload.fitMode || "contain",
+                                display: "block",
+                              }}
+                            />
+                          )}
+                          <div
+                            style={{
+                              position: "absolute",
+                              bottom: "6px",
+                              right: "8px",
+                              background: "rgba(0, 0, 0, 0.75)",
+                              color: "#38bdf8",
+                              fontSize: "9px",
+                              fontWeight: 800,
+                              padding: "2px 6px",
+                              borderRadius: "4px",
+                              letterSpacing: "0.06em",
+                              textTransform: "uppercase",
+                              backdropFilter: "blur(4px)",
+                              border: "1px solid rgba(56, 189, 248, 0.3)",
+                            }}
+                          >
+                            {slidePayload.mediaType === 'video' ? '🎬 Live Video' : '🖼️ Live Image'}
+                          </div>
+                        </div>
+                      );
+                    }
+
+                    if (slidePayload?.kind === 'presentation') {
+                      return (
+                        <div
+                          style={{
+                            width: "100%",
+                            height: "100%",
+                            minHeight: "120px",
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            textAlign: "center",
+                            padding: "8px",
+                            background: "rgba(15, 23, 42, 0.8)",
+                            borderRadius: "6px",
+                            border: "1px solid rgba(255, 255, 255, 0.12)",
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontSize: "10px",
+                              fontWeight: 800,
+                              color: slidePayload.docType === 'pptx' ? '#fb923c' : '#38bdf8',
+                              letterSpacing: "0.06em",
+                              textTransform: "uppercase",
+                              marginBottom: "4px",
+                            }}
+                          >
+                            {(slidePayload.docType || "slide").toUpperCase()} {slidePayload.docType === 'pptx' ? 'Slide' : 'Page'} {slidePayload.pageNumber || 1} / {slidePayload.totalPages || 1}
+                          </span>
+                          {slidePayload.heading && (
+                            <span
+                              style={{
+                                fontSize: "12px",
+                                fontWeight: 700,
+                                color: "#f8fafc",
+                                marginBottom: "4px",
+                              }}
+                            >
+                              {slidePayload.heading}
+                            </span>
+                          )}
+                          {slidePayload.body && (
+                            <span
+                              style={{
+                                fontSize: "10px",
+                                color: "#cbd5e1",
+                                lineHeight: 1.3,
+                                maxHeight: "55px",
+                                overflow: "hidden",
+                                display: "-webkit-box",
+                                WebkitLineClamp: 3,
+                                WebkitBoxOrient: "vertical",
+                              }}
+                            >
+                              {slidePayload.body}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    }
+
+                    const rawText = getSlideReadableText(rawLine);
 
                     const isScripture = (state.category === "scripture" || activeTab === "scripture");
 

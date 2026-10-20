@@ -3,8 +3,6 @@ import {
   X,
   Check,
   Radio,
-  Sparkles,
-  FileText,
   Layers,
   BookOpen,
   Music,
@@ -13,8 +11,6 @@ import {
   Megaphone,
   Bookmark,
   Tv,
-  ListPlus,
-  RotateCcw,
 } from 'lucide-react';
 import { ScheduleItem, ScheduleCategory } from '../types';
 

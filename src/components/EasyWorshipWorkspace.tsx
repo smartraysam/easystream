@@ -25,6 +25,11 @@ import {
   Flame,
   Mic2,
   Megaphone,
+  Film,
+  Upload,
+  Volume2,
+  VolumeX,
+  Repeat,
 } from "lucide-react";
 import {
   AppState,
@@ -33,6 +38,7 @@ import {
   PresentationTheme,
   ScheduleItem,
   ScheduleCategory,
+  SlidePayload,
 } from "../types";
 import { DEFAULT_SCHEDULES } from "../data/defaults";
 import {
@@ -42,6 +48,15 @@ import {
   AVAILABLE_BIBLE_VERSIONS,
 } from "../data/bibleBooks";
 import { parseLyricsToSlides } from "../utils/lyricParser";
+import {
+  encodeSlidePayload,
+  parseSlidePayload,
+  repaginateWordSlides,
+  importMediaFileToLibraryItem,
+  importPresentationFileToLibraryItem,
+  DEFAULT_MEDIA_ITEMS,
+  DEFAULT_PRESENTATION_ITEMS,
+} from "../utils/mediaPresentationParser";
 import { OnlineSongResult, DEFAULT_WORSHIP_SONG } from "./V2Presenter";
 import { POPULAR_WORSHIP_SONGS } from "../data/popularWorshipSongs";
 import { ScheduleItemEditorModal } from "./ScheduleItemEditorModal";
@@ -73,6 +88,7 @@ interface EasyWorshipWorkspaceProps {
   onUpdateLiveState: (update: Partial<LiveState>) => void;
   onUpdateTheme?: (theme: Partial<PresentationTheme>) => void;
   onSaveLibraryItem?: (item: LibraryItem) => void;
+  onDeleteLibraryItem?: (id: string) => void;
   onAddToSchedule?: (item: LibraryItem) => void;
   onUpdateSchedule?: (items: ScheduleItem[]) => void;
   onRemoveFromSchedule?: (id: string) => void;
@@ -97,6 +113,7 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
   onUpdateLiveState,
   onUpdateTheme: _onUpdateTheme,
   onSaveLibraryItem,
+  onDeleteLibraryItem,
   onAddToSchedule,
   onUpdateSchedule,
   onRemoveFromSchedule,
@@ -676,7 +693,7 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
   const [selectedLyricSlideIndex, setSelectedLyricSlideIndex] = useState(0);
   const [onlineSongResults, setOnlineSongResults] = useState<OnlineSongResult[]>([]);
   const [lyricsLoading, setLyricsLoading] = useState(false);
-  const lyricSearchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lyricSearchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 1. Matches from local church song bank
   const localSongMatches: OnlineSongResult[] = useMemo(() => {
@@ -1094,6 +1111,727 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
   };
 
   // -----------------------------------------------------------------
+  // 6B. MEDIA TAB STATE & HANDLERS (Images & Videos)
+  // -----------------------------------------------------------------
+  const [mediaQuery, setMediaQuery] = useState("");
+  const [mediaFilter, setMediaFilter] = useState<"all" | "image" | "video">("all");
+  const [mediaUploading, setMediaUploading] = useState(false);
+  const mediaUploadInputRef = useRef<HTMLInputElement | null>(null);
+
+  const allMediaItems: LibraryItem[] = useMemo(() => {
+    const savedMedia = (state.library || []).filter((i) => i.category === "media");
+    const savedIds = new Set(savedMedia.map((i) => i.id));
+    const defaults = DEFAULT_MEDIA_ITEMS.filter((d) => !savedIds.has(d.id));
+    return [...savedMedia, ...defaults];
+  }, [state.library]);
+
+  const filteredMediaItems: LibraryItem[] = useMemo(() => {
+    const q = mediaQuery.trim().toLowerCase();
+    return allMediaItems.filter((item) => {
+      if (mediaFilter !== "all" && item.mediaType !== mediaFilter) return false;
+      if (!q) return true;
+      return (
+        item.title.toLowerCase().includes(q) ||
+        (item.author || "").toLowerCase().includes(q) ||
+        (item.content || "").toLowerCase().includes(q)
+      );
+    });
+  }, [allMediaItems, mediaFilter, mediaQuery]);
+
+  const [selectedMediaId, setSelectedMediaId] = useState<string>(
+    () => DEFAULT_MEDIA_ITEMS[0]?.id || "",
+  );
+
+  const selectedMediaItem: LibraryItem | null = useMemo(() => {
+    return (
+      allMediaItems.find((i) => i.id === selectedMediaId) ||
+      filteredMediaItems[0] ||
+      allMediaItems[0] ||
+      null
+    );
+  }, [allMediaItems, filteredMediaItems, selectedMediaId]);
+
+  const handleSelectMediaItem = (item: LibraryItem, andGoLive: boolean = false) => {
+    setSelectedMediaId(item.id);
+    setPreviewItem({
+      id: item.id,
+      title: item.title,
+      category: "media",
+      lines: item.lines,
+      cur: 0,
+    });
+
+    if (andGoLive) {
+      onSetLines(
+        item.title,
+        item.mediaType === "video" ? "Video Media" : "Image Media",
+        item.lines,
+        "media",
+      );
+      onJumpTo(0);
+      if (state.liveState.isClearText) {
+        onUpdateLiveState({ isClearText: false });
+      }
+      setLiveFeedback(true);
+      setTimeout(() => setLiveFeedback(false), 2000);
+    }
+  };
+
+  const handleImportMediaFiles = async (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
+    setMediaUploading(true);
+    try {
+      let lastImported: LibraryItem | null = null;
+      for (let i = 0; i < fileList.length; i++) {
+        const file = fileList[i];
+        const newItem = await importMediaFileToLibraryItem(file);
+        onSaveLibraryItem?.(newItem);
+        lastImported = newItem;
+      }
+      if (lastImported) {
+        setSelectedMediaId(lastImported.id);
+        setPreviewItem({
+          id: lastImported.id,
+          title: lastImported.title,
+          category: "media",
+          lines: lastImported.lines,
+          cur: 0,
+        });
+        showScheduleAlert(`Imported "${lastImported.title}" to Media`);
+      }
+    } catch (err) {
+      console.error("Failed to import media file:", err);
+    } finally {
+      setMediaUploading(false);
+      if (mediaUploadInputRef.current) {
+        mediaUploadInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleUpdateMediaSettings = (
+    item: LibraryItem,
+    patch: Partial<SlidePayload>,
+  ) => {
+    const existingPayload = parseSlidePayload(item.lines?.[0] || "");
+    const nextPayload: SlidePayload = {
+      kind: "media",
+      mediaType: item.mediaType || existingPayload?.mediaType || "image",
+      mediaUrl: item.mediaUrl || existingPayload?.mediaUrl || "",
+      heading:
+        patch.heading !== undefined
+          ? patch.heading
+          : existingPayload?.heading || item.title,
+      body:
+        patch.body !== undefined ? patch.body : existingPayload?.body || "",
+      fitMode: patch.fitMode || existingPayload?.fitMode || "contain",
+      muted:
+        patch.muted !== undefined
+          ? patch.muted
+          : existingPayload?.muted ?? false,
+      loop:
+        patch.loop !== undefined ? patch.loop : existingPayload?.loop ?? true,
+    };
+    const encoded = encodeSlidePayload(nextPayload);
+    const updatedItem: LibraryItem = {
+      ...item,
+      lines: [encoded],
+      updatedAt: Date.now(),
+    };
+    onSaveLibraryItem?.(updatedItem);
+
+    if (previewItem.id === item.id || selectedMediaId === item.id) {
+      setPreviewItem((prev) => ({
+        ...prev,
+        lines: [encoded],
+      }));
+    }
+
+    if (state.category === "media" && state.title === item.title) {
+      onSetLines(
+        item.title,
+        item.mediaType === "video" ? "Video Media" : "Image Media",
+        [encoded],
+        "media",
+      );
+      onJumpTo(0);
+    }
+  };
+
+  const handleAddMediaToSchedule = (item: LibraryItem) => {
+    handleAddItemToSchedule({
+      title: item.title,
+      category: "media",
+      lines: item.lines,
+      author: item.author || (item.mediaType === "video" ? "Video" : "Image"),
+    });
+  };
+
+  const handleDeleteMediaItem = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    onDeleteLibraryItem?.(id);
+  };
+
+  // -----------------------------------------------------------------
+  // 6C. PRESENTATIONS TAB STATE & HANDLERS (PPT, Word, PDF)
+  // -----------------------------------------------------------------
+  const [presQuery, setPresQuery] = useState("");
+  const [presFilter, setPresFilter] = useState<"all" | "pptx" | "docx" | "pdf">("all");
+  const [presUploading, setPresUploading] = useState(false);
+  const [wordSplitMode, setWordSplitMode] = useState<
+    "standard" | "compact" | "headings" | "paragraphs"
+  >("standard");
+  const presUploadInputRef = useRef<HTMLInputElement | null>(null);
+
+  const allPresentationItems: LibraryItem[] = useMemo(() => {
+    const savedPres = (state.library || []).filter(
+      (i) => i.category === "presentation",
+    );
+    const savedIds = new Set(savedPres.map((i) => i.id));
+    const defaults = DEFAULT_PRESENTATION_ITEMS.filter((d) => !savedIds.has(d.id));
+    return [...savedPres, ...defaults];
+  }, [state.library]);
+
+  const filteredPresentationItems: LibraryItem[] = useMemo(() => {
+    const q = presQuery.trim().toLowerCase();
+    return allPresentationItems.filter((item) => {
+      if (presFilter !== "all" && item.docType !== presFilter) {
+        return false;
+      }
+      if (!q) return true;
+      return (
+        item.title.toLowerCase().includes(q) ||
+        (item.author || "").toLowerCase().includes(q) ||
+        (item.content || "").toLowerCase().includes(q)
+      );
+    });
+  }, [allPresentationItems, presFilter, presQuery]);
+
+  const [selectedPresId, setSelectedPresId] = useState<string>(
+    () => DEFAULT_PRESENTATION_ITEMS[0]?.id || "",
+  );
+  const [selectedPresSlideIndex, setSelectedPresSlideIndex] = useState<number>(0);
+
+  const selectedPresentation: LibraryItem | null = useMemo(() => {
+    return (
+      allPresentationItems.find((i) => i.id === selectedPresId) ||
+      filteredPresentationItems[0] ||
+      allPresentationItems[0] ||
+      null
+    );
+  }, [allPresentationItems, filteredPresentationItems, selectedPresId]);
+
+  const getWordItemSlides = (
+    item: LibraryItem,
+    mode: "standard" | "compact" | "headings" | "paragraphs",
+  ): string[] => {
+    if (item.docType !== "docx" || mode === "standard") {
+      return item.lines || [];
+    }
+    const rawParas = (item.content || "")
+      .split(/\n+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (rawParas.length === 0) return item.lines || [];
+    const firstSlide = parseSlidePayload(item.lines?.[0] || "");
+    const payloads = repaginateWordSlides(
+      rawParas,
+      item.title,
+      mode,
+      firstSlide?.imageUrl,
+    );
+    return payloads.map(encodeSlidePayload);
+  };
+
+  const currentPresentationSlides: string[] = useMemo(() => {
+    if (!selectedPresentation) return [];
+    return getWordItemSlides(selectedPresentation, wordSplitMode);
+  }, [selectedPresentation, wordSplitMode]);
+
+  const handleSelectPresentation = (
+    item: LibraryItem,
+    andGoLive: boolean = false,
+    initialSlideIdx: number = 0,
+  ) => {
+    setSelectedPresId(item.id);
+    const slides = getWordItemSlides(item, wordSplitMode);
+    const safeIdx = Math.max(0, Math.min(initialSlideIdx, slides.length - 1));
+    setSelectedPresSlideIndex(safeIdx);
+
+    setPreviewItem({
+      id: item.id,
+      title: item.title,
+      category: "presentation",
+      lines: slides,
+      cur: safeIdx,
+    });
+
+    if (andGoLive) {
+      const subtitle =
+        item.docType === "pptx"
+          ? "PowerPoint Presentation"
+          : item.docType === "docx"
+          ? "Word Document"
+          : "PDF Document";
+      onSetLines(item.title, subtitle, slides, "presentation");
+      onJumpTo(safeIdx);
+      if (state.liveState.isClearText) {
+        onUpdateLiveState({ isClearText: false });
+      }
+      setLiveFeedback(true);
+      setTimeout(() => setLiveFeedback(false), 2000);
+    }
+  };
+
+  const handleSelectPresSlide = (idx: number, andGoLive: boolean = false) => {
+    if (!selectedPresentation || currentPresentationSlides.length === 0) return;
+    const clamped = Math.max(
+      0,
+      Math.min(idx, currentPresentationSlides.length - 1),
+    );
+    setSelectedPresSlideIndex(clamped);
+
+    setPreviewItem({
+      id: selectedPresentation.id,
+      title: selectedPresentation.title,
+      category: "presentation",
+      lines: currentPresentationSlides,
+      cur: clamped,
+    });
+
+    const isPresAlreadyLive =
+      state.category === "presentation" &&
+      state.title?.toLowerCase().trim() ===
+        selectedPresentation.title.toLowerCase().trim();
+
+    if (andGoLive) {
+      const subtitle =
+        selectedPresentation.docType === "pptx"
+          ? "PowerPoint Presentation"
+          : selectedPresentation.docType === "docx"
+          ? "Word Document"
+          : "PDF Document";
+      onSetLines(
+        selectedPresentation.title,
+        subtitle,
+        currentPresentationSlides,
+        "presentation",
+      );
+      onJumpTo(clamped);
+      if (state.liveState.isClearText) {
+        onUpdateLiveState({ isClearText: false });
+      }
+      setLiveFeedback(true);
+      setTimeout(() => setLiveFeedback(false), 2000);
+    } else if (isPresAlreadyLive) {
+      onJumpTo(clamped);
+      if (state.liveState.isClearText) {
+        onUpdateLiveState({ isClearText: false });
+      }
+    }
+  };
+
+  const handleWordSplitModeChange = (
+    mode: "standard" | "compact" | "headings" | "paragraphs",
+  ) => {
+    setWordSplitMode(mode);
+    if (selectedPresentation && selectedPresentation.docType === "docx") {
+      const nextSlides = getWordItemSlides(selectedPresentation, mode);
+      setSelectedPresSlideIndex(0);
+      setPreviewItem({
+        id: selectedPresentation.id,
+        title: selectedPresentation.title,
+        category: "presentation",
+        lines: nextSlides,
+        cur: 0,
+      });
+      if (
+        state.category === "presentation" &&
+        state.title === selectedPresentation.title
+      ) {
+        onSetLines(
+          selectedPresentation.title,
+          "Word Document",
+          nextSlides,
+          "presentation",
+        );
+        onJumpTo(0);
+      }
+    }
+  };
+
+  const handleImportPresentationFiles = async (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
+    setPresUploading(true);
+    try {
+      let lastImported: LibraryItem | null = null;
+      for (let i = 0; i < fileList.length; i++) {
+        const file = fileList[i];
+        const newItem = await importPresentationFileToLibraryItem(file);
+        onSaveLibraryItem?.(newItem);
+        lastImported = newItem;
+      }
+      if (lastImported) {
+        setSelectedPresId(lastImported.id);
+        setSelectedPresSlideIndex(0);
+        setPreviewItem({
+          id: lastImported.id,
+          title: lastImported.title,
+          category: "presentation",
+          lines: lastImported.lines,
+          cur: 0,
+        });
+        showScheduleAlert(
+          `Imported "${lastImported.title}" (${lastImported.lines.length} ${
+            lastImported.docType === "pptx" ? "slides" : "pages"
+          })`,
+        );
+      }
+    } catch (err) {
+      console.error("Failed to import presentation file:", err);
+    } finally {
+      setPresUploading(false);
+      if (presUploadInputRef.current) {
+        presUploadInputRef.current.value = "";
+      }
+    }
+  };
+
+  const handleAddPresentationToSchedule = (
+    item: LibraryItem,
+    slidesOverride?: string[],
+  ) => {
+    handleAddItemToSchedule({
+      title: item.title,
+      category: "presentation",
+      lines: slidesOverride || item.lines,
+      author:
+        item.author ||
+        (item.docType === "pptx"
+          ? "PowerPoint"
+          : item.docType === "docx"
+          ? "Word Document"
+          : "PDF Document"),
+    });
+  };
+
+  const handleDeletePresentation = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    onDeleteLibraryItem?.(id);
+  };
+
+  // Helper to render structured Media & Presentation payloads inside 16:9 Preview & Live Monitors
+  const renderMonitorSlidePayload = (
+    payload: SlidePayload,
+    isLiveMonitor: boolean,
+  ) => {
+    if (payload.kind === "media") {
+      return (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            background: "#000000",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            overflow: "hidden",
+          }}
+        >
+          {payload.mediaType === "video" && payload.mediaUrl ? (
+            <video
+              key={payload.mediaUrl}
+              src={payload.mediaUrl}
+              autoPlay
+              playsInline
+              loop={payload.loop ?? true}
+              muted={isLiveMonitor ? payload.muted ?? true : true}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: payload.fitMode || "contain",
+              }}
+            />
+          ) : payload.mediaUrl ? (
+            <img
+              src={payload.mediaUrl}
+              alt={payload.heading || "Media"}
+              style={{
+                width: "100%",
+                height: "100%",
+                objectFit: payload.fitMode || "contain",
+              }}
+            />
+          ) : null}
+
+          {/* Media Type Badge */}
+          <div
+            style={{
+              position: "absolute",
+              top: "6px",
+              left: "8px",
+              padding: "2px 6px",
+              borderRadius: "4px",
+              background: "rgba(15, 23, 42, 0.8)",
+              border: "1px solid rgba(255, 255, 255, 0.15)",
+              fontSize: "8px",
+              fontWeight: 800,
+              color: payload.mediaType === "video" ? "#38bdf8" : "#34d399",
+              letterSpacing: "0.06em",
+              textTransform: "uppercase",
+            }}
+          >
+            {payload.mediaType === "video" ? "VIDEO" : "IMAGE"} •{" "}
+            {(payload.fitMode || "contain").toUpperCase()}
+          </div>
+
+          {payload.body && (
+            <div
+              style={{
+                position: "absolute",
+                bottom: "8px",
+                left: "12px",
+                right: "12px",
+                padding: "4px 8px",
+                borderRadius: "6px",
+                background: "rgba(0, 0, 0, 0.72)",
+                backdropFilter: "blur(6px)",
+                color: "#ffffff",
+                fontSize: "10px",
+                fontWeight: 700,
+                textAlign: "center",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {payload.body}
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    if (payload.kind === "presentation") {
+      const docType = payload.docType || "pptx";
+      const badgeColor =
+        docType === "pptx"
+          ? "#f97316"
+          : docType === "docx"
+          ? "#3b82f6"
+          : "#ef4444";
+      const unitLabel = docType === "pptx" ? "SLIDE" : "PAGE";
+      const hasBullets =
+        Array.isArray(payload.bullets) && payload.bullets.length > 0;
+      const bodyLines = (payload.body || "")
+        .split(/\n+/)
+        .map((s) => s.trim())
+        .filter(Boolean);
+
+      return (
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            width: "100%",
+            height: "100%",
+            padding: "10px 34px",
+            display: "flex",
+            flexDirection: "column",
+            justifyContent: "space-between",
+            textAlign: "left",
+            background:
+              docType === "docx"
+                ? "linear-gradient(155deg, #0f172a 0%, #1e293b 100%)"
+                : docType === "pdf"
+                ? "linear-gradient(155deg, #18181b 0%, #27272a 100%)"
+                : "linear-gradient(145deg, #0f172a 0%, #1e1b4b 100%)",
+            overflow: "hidden",
+          }}
+        >
+          {/* Top Bar: Document Type & Slide/Page Counter */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "6px",
+              borderBottom: "1px solid rgba(255, 255, 255, 0.1)",
+              paddingBottom: "4px",
+            }}
+          >
+            <span
+              style={{
+                fontSize: "8px",
+                fontWeight: 800,
+                color: badgeColor,
+                letterSpacing: "0.06em",
+                textTransform: "uppercase",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {docType.toUpperCase()} • {payload.heading || "Presentation"}
+            </span>
+            <span
+              style={{
+                fontSize: "8px",
+                fontWeight: 800,
+                color: "#e2e8f0",
+                background: "rgba(255, 255, 255, 0.1)",
+                padding: "1px 6px",
+                borderRadius: "999px",
+                flexShrink: 0,
+              }}
+            >
+              {unitLabel} {payload.pageNumber || 1} / {payload.totalPages || 1}
+            </span>
+          </div>
+
+          {/* Center Slide / Page Content */}
+          <div
+            style={{
+              flex: 1,
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              overflow: "hidden",
+              padding: "4px 0",
+            }}
+          >
+            <div
+              style={{
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "center",
+                gap: "4px",
+                minWidth: 0,
+              }}
+            >
+              {payload.heading && (
+                <div
+                  style={{
+                    fontSize: "11px",
+                    fontWeight: 800,
+                    color: "#ffffff",
+                    lineHeight: 1.2,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {payload.heading}
+                </div>
+              )}
+
+              {hasBullets ? (
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "2px",
+                  }}
+                >
+                  {payload.bullets!.slice(0, 4).map((b, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: "5px",
+                        fontSize: "9.5px",
+                        color: "#e2e8f0",
+                        lineHeight: 1.25,
+                      }}
+                    >
+                      <span style={{ color: badgeColor, fontWeight: 900 }}>
+                        •
+                      </span>
+                      <span
+                        style={{
+                          overflow: "hidden",
+                          display: "-webkit-box",
+                          WebkitLineClamp: 1,
+                          WebkitBoxOrient: "vertical",
+                        }}
+                      >
+                        {b}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div
+                  style={{
+                    fontSize: "9.5px",
+                    color: "#e2e8f0",
+                    lineHeight: 1.35,
+                    overflow: "hidden",
+                    display: "-webkit-box",
+                    WebkitLineClamp: 4,
+                    WebkitBoxOrient: "vertical",
+                    whiteSpace: "pre-line",
+                  }}
+                >
+                  {bodyLines.join("\n") || payload.heading || ""}
+                </div>
+              )}
+            </div>
+
+            {payload.imageUrl && (
+              <div
+                style={{
+                  width: "34%",
+                  height: "100%",
+                  borderRadius: "4px",
+                  overflow: "hidden",
+                  border: "1px solid rgba(255, 255, 255, 0.12)",
+                  background: "rgba(0, 0, 0, 0.4)",
+                  flexShrink: 0,
+                }}
+              >
+                <img
+                  src={payload.imageUrl}
+                  alt="Slide visual"
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "contain",
+                  }}
+                />
+              </div>
+            )}
+          </div>
+
+          {/* Footer label */}
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              fontSize: "8px",
+              color: "#94a3b8",
+            }}
+          >
+            <span>{`${unitLabel} ${payload.pageNumber || 1}`}</span>
+            {payload.pdfUrl && (
+              <span style={{ color: "#f87171", fontWeight: 700 }}>
+                PDF Document
+              </span>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
+  // -----------------------------------------------------------------
   // 7. Send Preview to Live Output
   // -----------------------------------------------------------------
   const handleGoLive = () => {
@@ -1113,6 +1851,25 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
       previewItem.category === "hymn"
     ) {
       onSetLines(previewItem.title, "Worship", previewItem.lines, "song");
+      onJumpTo(previewItem.cur || 0);
+    } else if (previewItem.category === "media") {
+      const p = parseSlidePayload(previewItem.lines?.[0] || "");
+      onSetLines(
+        previewItem.title,
+        p?.mediaType === "video" ? "Video Media" : "Image Media",
+        previewItem.lines,
+        "media",
+      );
+      onJumpTo(previewItem.cur || 0);
+    } else if (previewItem.category === "presentation") {
+      const p = parseSlidePayload(previewItem.lines?.[0] || "");
+      const sub =
+        p?.docType === "pptx"
+          ? "PowerPoint Presentation"
+          : p?.docType === "docx"
+          ? "Word Document"
+          : "PDF Document";
+      onSetLines(previewItem.title, sub, previewItem.lines, "presentation");
       onJumpTo(previewItem.cur || 0);
     } else {
       onSetLines(
@@ -1153,6 +1910,9 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
           if (activeVerseRange) {
             setSelectedVerseNumber(activeVerseRange.start + nextIdx);
           }
+          if (state.category === "presentation") {
+            setSelectedPresSlideIndex(nextIdx);
+          }
         }
       } else if (e.key === "ArrowLeft" || e.key === "PageUp") {
         e.preventDefault();
@@ -1162,12 +1922,15 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
           if (activeVerseRange) {
             setSelectedVerseNumber(activeVerseRange.start + prevIdx);
           }
+          if (state.category === "presentation") {
+            setSelectedPresSlideIndex(prevIdx);
+          }
         }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [previewItem, selectedVersion, state.lines, state.cur, activeVerseRange]);
+  }, [previewItem, selectedVersion, state.lines, state.cur, activeVerseRange, state.category]);
 
   return (
     <div
@@ -1494,6 +2257,7 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
           >
             {currentScheduleItems.map((item) => {
               const isSelected = selectedScheduleId === item.id;
+              const firstPayload = parseSlidePayload(item.lines?.[0] || "");
               const catColor =
                 item.category === "scripture"
                   ? "#38bdf8"
@@ -1501,6 +2265,10 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                   ? "#fb923c"
                   : item.category === "song"
                   ? "#c084fc"
+                  : item.category === "media"
+                  ? "#10b981"
+                  : item.category === "presentation"
+                  ? "#f97316"
                   : item.category === "prayer"
                   ? "#818cf8"
                   : item.category === "ministration"
@@ -1541,6 +2309,16 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                       const subtitle =
                         item.category === "song"
                           ? "Worship"
+                          : item.category === "media"
+                          ? firstPayload?.mediaType === "video"
+                            ? "Video Media"
+                            : "Image Media"
+                          : item.category === "presentation"
+                          ? firstPayload?.docType === "pptx"
+                            ? "PowerPoint Presentation"
+                            : firstPayload?.docType === "docx"
+                            ? "Word Document"
+                            : "PDF Document"
                           : item.category === "prayer"
                           ? "Prayer"
                           : item.category === "ministration"
@@ -1595,9 +2373,18 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
+                      overflow: "hidden",
                     }}
                   >
-                    {item.category === "prayer" ? (
+                    {item.category === "media" ? (
+                      firstPayload?.mediaType === "video" ? (
+                        <Film size={11} color={isSelected ? "#34d399" : catColor} />
+                      ) : (
+                        <Image size={11} color={isSelected ? "#34d399" : catColor} />
+                      )
+                    ) : item.category === "presentation" ? (
+                      <FileText size={11} color={isSelected ? "#fb923c" : catColor} />
+                    ) : item.category === "prayer" ? (
                       <Flame size={11} color={isSelected ? "#818cf8" : catColor} />
                     ) : item.category === "ministration" ? (
                       <Mic2 size={11} color={isSelected ? "#f472b6" : catColor} />
@@ -1653,12 +2440,23 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                           letterSpacing: "0.04em",
                         }}
                       >
-                        {item.category || "custom"}
+                        {item.category === "presentation" && firstPayload?.docType
+                          ? firstPayload.docType.toUpperCase()
+                          : item.category === "media" && firstPayload?.mediaType
+                          ? firstPayload.mediaType.toUpperCase()
+                          : item.category || "custom"}
                       </span>
                       <span style={{ fontSize: "9px", color: "#64748b" }}>•</span>
                       <span style={{ fontSize: "9px", color: "#94a3b8" }}>
-                        {item.lines?.length || 1} slide
-                        {item.lines?.length === 1 ? "" : "s"}
+                        {item.lines?.length || 1}{" "}
+                        {item.category === "presentation" &&
+                        firstPayload?.docType !== "pptx"
+                          ? item.lines?.length === 1
+                            ? "page"
+                            : "pages"
+                          : item.lines?.length === 1
+                          ? "slide"
+                          : "slides"}
                       </span>
                     </div>
                   </div>
@@ -1823,12 +2621,22 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
           {/* Slide Navigation (< Prev Verse  Verse 1 of 5 • John 3:6  Next Verse >) */}
           {(previewItem.lines?.length || 0) > 1 && (() => {
             const previewRawSlide = previewItem.lines[previewItem.cur || 0] || "";
+            const previewPayload = parseSlidePayload(previewRawSlide);
             const { citation: previewCitation } =
               previewItem.category === "scripture"
                 ? parseSlideReference(previewRawSlide, previewItem.title)
+                : previewPayload
+                ? { citation: previewPayload.heading || previewItem.title }
                 : { citation: previewItem.title };
             const curIdx = previewItem.cur || 0;
             const totalLines = previewItem.lines.length;
+            const unitName =
+              previewItem.category === "scripture"
+                ? "Verse"
+                : previewPayload?.kind === "presentation" &&
+                  previewPayload?.docType !== "pptx"
+                ? "Page"
+                : "Slide";
 
             return (
               <div
@@ -1853,9 +2661,12 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                     if (activeVerseRange) {
                       setSelectedVerseNumber(activeVerseRange.start + nextIdx);
                     }
+                    if (previewItem.category === "presentation") {
+                      setSelectedPresSlideIndex(nextIdx);
+                    }
                   }}
                   disabled={curIdx <= 0}
-                  title="Previous Verse (Left Arrow)"
+                  title={`Previous ${unitName} (Left Arrow)`}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -1895,7 +2706,7 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {previewItem.category === "scripture" ? `Verse ${curIdx + 1} of ${totalLines}` : `Slide ${curIdx + 1} of ${totalLines}`}
+                  {`${unitName} ${curIdx + 1} of ${totalLines}`}
                   {previewCitation ? ` • ${previewCitation}` : ""}
                 </span>
 
@@ -1909,9 +2720,12 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                     if (activeVerseRange) {
                       setSelectedVerseNumber(activeVerseRange.start + nextIdx);
                     }
+                    if (previewItem.category === "presentation") {
+                      setSelectedPresSlideIndex(nextIdx);
+                    }
                   }}
                   disabled={curIdx >= totalLines - 1}
-                  title="Next Verse (Right Arrow)"
+                  title={`Next ${unitName} (Right Arrow)`}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -2000,9 +2814,12 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                       if (activeVerseRange) {
                         setSelectedVerseNumber(activeVerseRange.start + nextIdx);
                       }
+                      if (previewItem.category === "presentation") {
+                        setSelectedPresSlideIndex(nextIdx);
+                      }
                     }}
                     disabled={(previewItem.cur || 0) <= 0}
-                    title="Previous Verse"
+                    title="Previous Slide / Page"
                     style={{
                       position: "absolute",
                       left: "6px",
@@ -2043,11 +2860,14 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                       if (activeVerseRange) {
                         setSelectedVerseNumber(activeVerseRange.start + nextIdx);
                       }
+                      if (previewItem.category === "presentation") {
+                        setSelectedPresSlideIndex(nextIdx);
+                      }
                     }}
                     disabled={
                       (previewItem.cur || 0) >= previewItem.lines.length - 1
                     }
-                    title="Next Verse"
+                    title="Next Slide / Page"
                     style={{
                       position: "absolute",
                       right: "6px",
@@ -2092,6 +2912,11 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
               {previewItem.category !== "blank" &&
                 previewItem.lines[previewItem.cur || 0] && (() => {
                   const rawLine = previewItem.lines[previewItem.cur || 0];
+                  const payload = parseSlidePayload(rawLine);
+                  if (payload) {
+                    return renderMonitorSlidePayload(payload, false);
+                  }
+
                   const { citation, body } =
                     previewItem.category === "scripture"
                       ? parseSlideReference(rawLine, previewItem.title)
@@ -2202,8 +3027,18 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                 fontWeight: 600,
               }}
             >
-              Slide {(previewItem.cur || 0) + 1} of{" "}
-              {previewItem.lines?.length || 1}
+              {(() => {
+                const p = parseSlidePayload(
+                  previewItem.lines?.[previewItem.cur || 0] || "",
+                );
+                const label =
+                  p?.kind === "presentation" && p?.docType !== "pptx"
+                    ? "Page"
+                    : "Slide";
+                return `${label} ${(previewItem.cur || 0) + 1} of ${
+                  previewItem.lines?.length || 1
+                }`;
+              })()}
             </div>
           </div>
         </div>
@@ -2268,12 +3103,22 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
           {/* Slide Navigation (< Prev Verse  Verse 1 of 5 • John 3:6  Next Verse >) */}
           {(state.lines?.length || 0) > 1 && (() => {
             const liveRawSlide = state.lines[state.cur] || "";
+            const livePayload = parseSlidePayload(liveRawSlide);
             const { citation: liveCitation } =
               state.category === "scripture"
                 ? parseSlideReference(liveRawSlide, state.title)
+                : livePayload
+                ? { citation: livePayload.heading || state.title }
                 : { citation: state.title };
             const curIdx = state.cur;
             const totalLines = state.lines.length;
+            const unitName =
+              state.category === "scripture"
+                ? "Verse"
+                : livePayload?.kind === "presentation" &&
+                  livePayload?.docType !== "pptx"
+                ? "Page"
+                : "Slide";
 
             return (
               <div
@@ -2295,9 +3140,12 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                     if (activeVerseRange) {
                       setSelectedVerseNumber(activeVerseRange.start + nextIdx);
                     }
+                    if (state.category === "presentation") {
+                      setSelectedPresSlideIndex(nextIdx);
+                    }
                   }}
                   disabled={curIdx <= 0}
-                  title="Previous Live Verse (Left Arrow)"
+                  title={`Previous Live ${unitName} (Left Arrow)`}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -2335,7 +3183,7 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {state.category === "scripture" ? `Verse ${curIdx + 1} of ${totalLines}` : `Slide ${curIdx + 1} of ${totalLines}`}
+                  {`${unitName} ${curIdx + 1} of ${totalLines}`}
                   {liveCitation ? ` • ${liveCitation}` : ""}
                 </span>
 
@@ -2346,9 +3194,12 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                     if (activeVerseRange) {
                       setSelectedVerseNumber(activeVerseRange.start + nextIdx);
                     }
+                    if (state.category === "presentation") {
+                      setSelectedPresSlideIndex(nextIdx);
+                    }
                   }}
                   disabled={curIdx >= totalLines - 1}
-                  title="Next Live Verse (Right Arrow / Space)"
+                  title={`Next Live ${unitName} (Right Arrow / Space)`}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -2441,9 +3292,12 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                       if (activeVerseRange) {
                         setSelectedVerseNumber(activeVerseRange.start + nextIdx);
                       }
+                      if (state.category === "presentation") {
+                        setSelectedPresSlideIndex(nextIdx);
+                      }
                     }}
                     disabled={state.cur <= 0}
-                    title="Previous Live Verse"
+                    title="Previous Live Slide / Page"
                     style={{
                       position: "absolute",
                       left: "6px",
@@ -2487,9 +3341,12 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                       if (activeVerseRange) {
                         setSelectedVerseNumber(activeVerseRange.start + nextIdx);
                       }
+                      if (state.category === "presentation") {
+                        setSelectedPresSlideIndex(nextIdx);
+                      }
                     }}
                     disabled={state.cur >= state.lines.length - 1}
-                    title="Next Live Verse (Right Arrow / Space)"
+                    title="Next Live Slide / Page (Right Arrow / Space)"
                     style={{
                       position: "absolute",
                       right: "6px",
@@ -2535,6 +3392,11 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                 !state.liveState.isClearText &&
                 state.lines[state.cur] && (() => {
                   const rawLine = state.lines[state.cur];
+                  const payload = parseSlidePayload(rawLine);
+                  if (payload) {
+                    return renderMonitorSlidePayload(payload, true);
+                  }
+
                   const { citation, body } =
                     state.category === "scripture"
                       ? parseSlideReference(rawLine, state.title)
@@ -2630,7 +3492,16 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                 fontWeight: 600,
               }}
             >
-              Slide {state.cur + 1} of {state.lines?.length || 1}
+              {(() => {
+                const p = parseSlidePayload(state.lines?.[state.cur] || "");
+                const label =
+                  p?.kind === "presentation" && p?.docType !== "pptx"
+                    ? "Page"
+                    : "Slide";
+                return `${label} ${state.cur + 1} of ${
+                  state.lines?.length || 1
+                }`;
+              })()}
             </div>
           </div>
         </div>
@@ -4973,9 +5844,1864 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
         )}
 
         {/* ----------------------------------------------------------- */}
-        {/* TABS 3, 4, 5: MEDIA, PRESENTATIONS, THEMES                  */}
+        {/* TAB 3: MEDIA (IMPORT IMAGES & VIDEOS, SCHEDULE & GO LIVE)   */}
         {/* ----------------------------------------------------------- */}
-        {activeTab !== "scriptures" && activeTab !== "songs" && (
+        {activeTab === "media" && (
+          <div
+            style={{
+              display: "flex",
+              flex: 1,
+              overflow: "hidden",
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                handleImportMediaFiles(e.dataTransfer.files);
+              }
+            }}
+          >
+            {/* Left Sub-Column: Import + Search + Filter + Media List */}
+            <div
+              style={{
+                width: "400px",
+                minWidth: "400px",
+                maxWidth: "400px",
+                flexShrink: 0,
+                borderRight: "1px solid rgba(255, 255, 255, 0.08)",
+                background: "rgba(15, 23, 42, 0.75)",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              {/* Hidden File Input for Image & Video Import */}
+              <input
+                ref={mediaUploadInputRef}
+                type="file"
+                accept="image/*,video/*"
+                multiple
+                style={{ display: "none" }}
+                onChange={(e) => handleImportMediaFiles(e.target.files)}
+              />
+
+              {/* Top Controls: Import Button & Search Input */}
+              <div
+                style={{
+                  padding: "10px",
+                  borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "8px",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                  <button
+                    onClick={() => mediaUploadInputRef.current?.click()}
+                    disabled={mediaUploading}
+                    style={{
+                      flex: 1,
+                      padding: "7px 12px",
+                      borderRadius: "6px",
+                      background:
+                        "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                      color: "#ffffff",
+                      border: "1px solid #34d399",
+                      fontSize: "11px",
+                      fontWeight: 800,
+                      cursor: mediaUploading ? "wait" : "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: "6px",
+                      boxShadow: "0 0 12px rgba(16, 185, 129, 0.3)",
+                    }}
+                  >
+                    <Upload size={13} />
+                    <span>
+                      {mediaUploading
+                        ? "Importing Media..."
+                        : "Import Image / Video"}
+                    </span>
+                  </button>
+                </div>
+
+                {/* Search Input */}
+                <div style={{ position: "relative" }}>
+                  <Search
+                    size={13}
+                    color="#64748b"
+                    style={{
+                      position: "absolute",
+                      left: "10px",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                    }}
+                  />
+                  <input
+                    type="text"
+                    value={mediaQuery}
+                    onChange={(e) => setMediaQuery(e.target.value)}
+                    placeholder="Search images & videos..."
+                    style={{
+                      width: "100%",
+                      padding: "6px 28px 6px 30px",
+                      background: "rgba(0, 0, 0, 0.6)",
+                      color: "#ffffff",
+                      border: "1px solid rgba(255, 255, 255, 0.15)",
+                      borderRadius: "6px",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      outline: "none",
+                    }}
+                  />
+                  {mediaQuery && (
+                    <button
+                      onClick={() => setMediaQuery("")}
+                      style={{
+                        position: "absolute",
+                        right: "8px",
+                        top: "50%",
+                        transform: "translateY(-50%)",
+                        background: "transparent",
+                        border: "none",
+                        color: "#94a3b8",
+                        cursor: "pointer",
+                        padding: 0,
+                        display: "flex",
+                      }}
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Filter Pills: All | Images | Videos */}
+                <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                  {(
+                    [
+                      { id: "all", label: "All Media" },
+                      { id: "image", label: "Images" },
+                      { id: "video", label: "Videos" },
+                    ] as const
+                  ).map((f) => {
+                    const active = mediaFilter === f.id;
+                    return (
+                      <button
+                        key={f.id}
+                        onClick={() => setMediaFilter(f.id)}
+                        style={{
+                          flex: 1,
+                          padding: "4px 8px",
+                          borderRadius: "5px",
+                          background: active
+                            ? "rgba(16, 185, 129, 0.2)"
+                            : "rgba(30, 41, 59, 0.6)",
+                          border: active
+                            ? "1px solid #10b981"
+                            : "1px solid rgba(255, 255, 255, 0.06)",
+                          color: active ? "#34d399" : "#94a3b8",
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {f.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Media Items List */}
+              <div
+                style={{
+                  flex: 1,
+                  overflowY: "auto",
+                  padding: "6px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "5px",
+                }}
+              >
+                {filteredMediaItems.length === 0 ? (
+                  <div
+                    style={{
+                      padding: "28px 16px",
+                      textAlign: "center",
+                      color: "#64748b",
+                      fontSize: "12px",
+                    }}
+                  >
+                    No media items found. Click "Import Image / Video" or drag
+                    and drop files here.
+                  </div>
+                ) : (
+                  filteredMediaItems.map((item) => {
+                    const isSelected = selectedMediaItem?.id === item.id;
+                    const isLive =
+                      state.category === "media" && state.title === item.title;
+                    const payload = parseSlidePayload(item.lines?.[0] || "");
+                    const isVideo =
+                      item.mediaType === "video" ||
+                      payload?.mediaType === "video";
+                    const mediaSrc = item.mediaUrl || payload?.mediaUrl || "";
+
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => handleSelectMediaItem(item, false)}
+                        onDoubleClick={() => handleSelectMediaItem(item, true)}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "10px",
+                          padding: "7px 8px",
+                          borderRadius: "7px",
+                          background: isSelected
+                            ? "linear-gradient(90deg, rgba(16, 185, 129, 0.2) 0%, rgba(16, 185, 129, 0.06) 100%)"
+                            : "rgba(30, 41, 59, 0.45)",
+                          border: isSelected
+                            ? "1px solid rgba(16, 185, 129, 0.5)"
+                            : "1px solid rgba(255, 255, 255, 0.05)",
+                          cursor: "pointer",
+                          transition: "all 0.12s ease",
+                        }}
+                      >
+                        {/* Thumbnail */}
+                        <div
+                          style={{
+                            width: "56px",
+                            height: "34px",
+                            borderRadius: "4px",
+                            background: "#000000",
+                            border: "1px solid rgba(255, 255, 255, 0.12)",
+                            overflow: "hidden",
+                            flexShrink: 0,
+                            position: "relative",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                          }}
+                        >
+                          {isVideo && mediaSrc ? (
+                            <video
+                              src={mediaSrc}
+                              muted
+                              preload="metadata"
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                objectFit: "cover",
+                              }}
+                            />
+                          ) : mediaSrc ? (
+                            <img
+                              src={mediaSrc}
+                              alt={item.title}
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                objectFit: "cover",
+                              }}
+                            />
+                          ) : isVideo ? (
+                            <Film size={14} color="#38bdf8" />
+                          ) : (
+                            <Image size={14} color="#34d399" />
+                          )}
+                        </div>
+
+                        {/* Title & Meta */}
+                        <div
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "2px",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "6px",
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: "12px",
+                                fontWeight: 700,
+                                color: isSelected ? "#ffffff" : "#e2e8f0",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {item.title}
+                            </span>
+                            {isLive && (
+                              <span
+                                style={{
+                                  fontSize: "8px",
+                                  fontWeight: 800,
+                                  padding: "1px 5px",
+                                  borderRadius: "4px",
+                                  background: "rgba(239, 68, 68, 0.25)",
+                                  color: "#f87171",
+                                  border: "1px solid rgba(239, 68, 68, 0.5)",
+                                }}
+                              >
+                                LIVE
+                              </span>
+                            )}
+                          </div>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "6px",
+                              fontSize: "10px",
+                              color: "#94a3b8",
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: "9px",
+                                fontWeight: 800,
+                                color: isVideo ? "#38bdf8" : "#34d399",
+                                textTransform: "uppercase",
+                              }}
+                            >
+                              {isVideo ? "VIDEO" : "IMAGE"}
+                            </span>
+                            <span>•</span>
+                            <span>{item.author || "Media Library"}</span>
+                          </div>
+                        </div>
+
+                        {/* Quick Actions */}
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px",
+                          }}
+                        >
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleAddMediaToSchedule(item);
+                            }}
+                            title="Add to Service Schedule"
+                            style={{
+                              padding: "4px 6px",
+                              borderRadius: "4px",
+                              background: "rgba(56, 189, 248, 0.12)",
+                              border: "1px solid rgba(56, 189, 248, 0.3)",
+                              color: "#38bdf8",
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                            }}
+                          >
+                            <ListPlus size={12} />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSelectMediaItem(item, true);
+                            }}
+                            title="Send to Live Output"
+                            style={{
+                              padding: "4px 7px",
+                              borderRadius: "4px",
+                              background:
+                                "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                              border: "none",
+                              color: "#ffffff",
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "3px",
+                              fontSize: "10px",
+                              fontWeight: 800,
+                            }}
+                          >
+                            <Play size={10} fill="#ffffff" />
+                          </button>
+                          {!item.id.startsWith("media-default-") && (
+                            <button
+                              onClick={(e) => handleDeleteMediaItem(item.id, e)}
+                              title="Remove from Library"
+                              style={{
+                                padding: "4px",
+                                borderRadius: "4px",
+                                background: "transparent",
+                                border: "none",
+                                color: "#64748b",
+                                cursor: "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                              }}
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* Right Sub-Column: Selected Media Settings & Visual Gallery Grid */}
+            <div
+              style={{
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                background: "#090d16",
+                overflow: "hidden",
+              }}
+            >
+              {/* Top Toolbar for Selected Media Item */}
+              {selectedMediaItem && (() => {
+                const payload = parseSlidePayload(
+                  selectedMediaItem.lines?.[0] || "",
+                );
+                const isVideo =
+                  selectedMediaItem.mediaType === "video" ||
+                  payload?.mediaType === "video";
+                const currentFit = payload?.fitMode || "contain";
+                const isMuted = payload?.muted ?? false;
+                const isLoop = payload?.loop ?? true;
+
+                return (
+                  <div
+                    style={{
+                      padding: "10px 16px",
+                      background: "#0f172a",
+                      borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      flexWrap: "wrap",
+                      gap: "10px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "10px",
+                        minWidth: 0,
+                      }}
+                    >
+                      {isVideo ? (
+                        <Film size={16} color="#38bdf8" />
+                      ) : (
+                        <Image size={16} color="#34d399" />
+                      )}
+                      <div>
+                        <div
+                          style={{
+                            fontSize: "13px",
+                            fontWeight: 800,
+                            color: "#ffffff",
+                          }}
+                        >
+                          {selectedMediaItem.title}
+                        </div>
+                        <div style={{ fontSize: "10px", color: "#64748b" }}>
+                          {isVideo ? "Video Media" : "Image Media"} • Click a
+                          card to preview, double-click to send to Live
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Display Settings & Action Buttons */}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      {/* Aspect Fit Mode */}
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          background: "rgba(15, 23, 42, 0.9)",
+                          border: "1px solid rgba(255, 255, 255, 0.1)",
+                          borderRadius: "6px",
+                          padding: "2px",
+                        }}
+                      >
+                        {(["contain", "cover"] as const).map((mode) => (
+                          <button
+                            key={mode}
+                            onClick={() =>
+                              handleUpdateMediaSettings(selectedMediaItem, {
+                                fitMode: mode,
+                              })
+                            }
+                            style={{
+                              padding: "3px 8px",
+                              borderRadius: "4px",
+                              border: "none",
+                              background:
+                                currentFit === mode ? "#0284c7" : "transparent",
+                              color:
+                                currentFit === mode ? "#ffffff" : "#94a3b8",
+                              fontSize: "10px",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              textTransform: "capitalize",
+                            }}
+                          >
+                            {mode}
+                          </button>
+                        ))}
+                      </div>
+
+                      {/* Video Controls: Loop & Mute */}
+                      {isVideo && (
+                        <>
+                          <button
+                            onClick={() =>
+                              handleUpdateMediaSettings(selectedMediaItem, {
+                                loop: !isLoop,
+                              })
+                            }
+                            style={{
+                              padding: "5px 9px",
+                              borderRadius: "6px",
+                              background: isLoop
+                                ? "rgba(56, 189, 248, 0.18)"
+                                : "rgba(30, 41, 59, 0.6)",
+                              border: isLoop
+                                ? "1px solid #38bdf8"
+                                : "1px solid rgba(255, 255, 255, 0.1)",
+                              color: isLoop ? "#38bdf8" : "#94a3b8",
+                              fontSize: "10px",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "4px",
+                            }}
+                          >
+                            <Repeat size={12} />
+                            <span>{isLoop ? "Loop On" : "Loop Off"}</span>
+                          </button>
+
+                          <button
+                            onClick={() =>
+                              handleUpdateMediaSettings(selectedMediaItem, {
+                                muted: !isMuted,
+                              })
+                            }
+                            style={{
+                              padding: "5px 9px",
+                              borderRadius: "6px",
+                              background: !isMuted
+                                ? "rgba(16, 185, 129, 0.18)"
+                                : "rgba(239, 68, 68, 0.15)",
+                              border: !isMuted
+                                ? "1px solid #10b981"
+                                : "1px solid rgba(239, 68, 68, 0.4)",
+                              color: !isMuted ? "#34d399" : "#f87171",
+                              fontSize: "10px",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "4px",
+                            }}
+                          >
+                            {isMuted ? (
+                              <VolumeX size={12} />
+                            ) : (
+                              <Volume2 size={12} />
+                            )}
+                            <span>{isMuted ? "Muted" : "Audio On"}</span>
+                          </button>
+                        </>
+                      )}
+
+                      {/* Caption Overlay Input */}
+                      <input
+                        type="text"
+                        value={payload?.body || ""}
+                        onChange={(e) =>
+                          handleUpdateMediaSettings(selectedMediaItem, {
+                            body: e.target.value,
+                          })
+                        }
+                        placeholder="Optional caption overlay..."
+                        style={{
+                          width: "165px",
+                          padding: "5px 8px",
+                          borderRadius: "6px",
+                          background: "rgba(0, 0, 0, 0.5)",
+                          border: "1px solid rgba(255, 255, 255, 0.14)",
+                          color: "#ffffff",
+                          fontSize: "11px",
+                          outline: "none",
+                        }}
+                      />
+
+                      {/* Add to Schedule */}
+                      <button
+                        onClick={() => handleAddMediaToSchedule(selectedMediaItem)}
+                        style={{
+                          padding: "5px 10px",
+                          borderRadius: "6px",
+                          background: "rgba(56, 189, 248, 0.15)",
+                          border: "1px solid rgba(56, 189, 248, 0.4)",
+                          color: "#38bdf8",
+                          fontSize: "11px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "5px",
+                        }}
+                      >
+                        <ListPlus size={13} />
+                        <span>+ Schedule</span>
+                      </button>
+
+                      {/* Send to Live */}
+                      <button
+                        onClick={() =>
+                          handleSelectMediaItem(selectedMediaItem, true)
+                        }
+                        style={{
+                          padding: "5px 12px",
+                          borderRadius: "6px",
+                          background:
+                            "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                          border: "none",
+                          color: "#ffffff",
+                          fontSize: "11px",
+                          fontWeight: 800,
+                          cursor: "pointer",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "5px",
+                          boxShadow: "0 0 12px rgba(16, 185, 129, 0.35)",
+                        }}
+                      >
+                        <Play size={11} fill="#ffffff" />
+                        <span>Send to Live</span>
+                      </button>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Visual Media Grid */}
+              <div
+                style={{
+                  flex: 1,
+                  overflowY: "auto",
+                  padding: "14px 16px",
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))",
+                  gap: "12px",
+                  alignContent: "start",
+                }}
+              >
+                {filteredMediaItems.map((item) => {
+                  const isSelected = selectedMediaItem?.id === item.id;
+                  const isLive =
+                    state.category === "media" && state.title === item.title;
+                  const payload = parseSlidePayload(item.lines?.[0] || "");
+                  const isVideo =
+                    item.mediaType === "video" ||
+                    payload?.mediaType === "video";
+                  const mediaSrc = item.mediaUrl || payload?.mediaUrl || "";
+
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => handleSelectMediaItem(item, false)}
+                      onDoubleClick={() => handleSelectMediaItem(item, true)}
+                      style={{
+                        borderRadius: "10px",
+                        background: isSelected
+                          ? "rgba(16, 185, 129, 0.12)"
+                          : "rgba(15, 23, 42, 0.85)",
+                        border: isLive
+                          ? "2px solid #ef4444"
+                          : isSelected
+                          ? "2px solid #10b981"
+                          : "1px solid rgba(255, 255, 255, 0.08)",
+                        overflow: "hidden",
+                        cursor: "pointer",
+                        display: "flex",
+                        flexDirection: "column",
+                        boxShadow: isSelected
+                          ? "0 8px 20px rgba(0, 0, 0, 0.5)"
+                          : "none",
+                        transition: "all 0.15s ease",
+                      }}
+                    >
+                      {/* 16:9 Media Card Preview */}
+                      <div
+                        style={{
+                          width: "100%",
+                          aspectRatio: "16 / 9",
+                          background: "#000000",
+                          position: "relative",
+                          overflow: "hidden",
+                        }}
+                      >
+                        {isVideo && mediaSrc ? (
+                          <video
+                            src={mediaSrc}
+                            muted
+                            loop
+                            playsInline
+                            onMouseEnter={(e) => e.currentTarget.play().catch(() => {})}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.pause();
+                              e.currentTarget.currentTime = 0;
+                            }}
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: payload?.fitMode || "contain",
+                            }}
+                          />
+                        ) : mediaSrc ? (
+                          <img
+                            src={mediaSrc}
+                            alt={item.title}
+                            style={{
+                              width: "100%",
+                              height: "100%",
+                              objectFit: payload?.fitMode || "contain",
+                            }}
+                          />
+                        ) : null}
+
+                        <div
+                          style={{
+                            position: "absolute",
+                            top: "6px",
+                            left: "6px",
+                            padding: "2px 6px",
+                            borderRadius: "4px",
+                            background: "rgba(15, 23, 42, 0.85)",
+                            color: isVideo ? "#38bdf8" : "#34d399",
+                            fontSize: "9px",
+                            fontWeight: 800,
+                            letterSpacing: "0.05em",
+                          }}
+                        >
+                          {isVideo ? "VIDEO" : "IMAGE"}
+                        </div>
+
+                        {isLive && (
+                          <div
+                            style={{
+                              position: "absolute",
+                              top: "6px",
+                              right: "6px",
+                              padding: "2px 6px",
+                              borderRadius: "4px",
+                              background: "#ef4444",
+                              color: "#ffffff",
+                              fontSize: "9px",
+                              fontWeight: 800,
+                            }}
+                          >
+                            LIVE ON SCREEN
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Card Footer */}
+                      <div
+                        style={{
+                          padding: "8px 10px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: "6px",
+                        }}
+                      >
+                        <div style={{ minWidth: 0, flex: 1 }}>
+                          <div
+                            style={{
+                              fontSize: "12px",
+                              fontWeight: 700,
+                              color: "#ffffff",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {item.title}
+                          </div>
+                          <div style={{ fontSize: "10px", color: "#64748b" }}>
+                            {item.author || "Media Asset"}
+                          </div>
+                        </div>
+
+                        <div style={{ display: "flex", gap: "4px" }}>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleAddMediaToSchedule(item);
+                            }}
+                            title="Add to Schedule"
+                            style={{
+                              padding: "4px 6px",
+                              borderRadius: "4px",
+                              background: "rgba(56, 189, 248, 0.12)",
+                              border: "1px solid rgba(56, 189, 248, 0.3)",
+                              color: "#38bdf8",
+                              fontSize: "10px",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                            }}
+                          >
+                            + Sched
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSelectMediaItem(item, true);
+                            }}
+                            style={{
+                              padding: "4px 8px",
+                              borderRadius: "4px",
+                              background: isLive
+                                ? "rgba(239, 68, 68, 0.25)"
+                                : "rgba(16, 185, 129, 0.2)",
+                              border: isLive
+                                ? "1px solid #ef4444"
+                                : "1px solid #10b981",
+                              color: isLive ? "#f87171" : "#34d399",
+                              fontSize: "10px",
+                              fontWeight: 800,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {isLive ? "Live" : "Go Live"}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ----------------------------------------------------------- */}
+        {/* TAB 4: PRESENTATIONS (IMPORT WORD, PDF, PPT + SLIDE/PAGE NAV)*/}
+        {/* ----------------------------------------------------------- */}
+        {activeTab === "presentations" && (
+          <div
+            style={{
+              display: "flex",
+              flex: 1,
+              overflow: "hidden",
+            }}
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                handleImportPresentationFiles(e.dataTransfer.files);
+              }
+            }}
+          >
+            {/* Left Sub-Column: Import Word/PDF/PPT + Filter + Presentation List */}
+            <div
+              style={{
+                width: "400px",
+                minWidth: "400px",
+                maxWidth: "400px",
+                flexShrink: 0,
+                borderRight: "1px solid rgba(255, 255, 255, 0.08)",
+                background: "rgba(15, 23, 42, 0.75)",
+                display: "flex",
+                flexDirection: "column",
+              }}
+            >
+              {/* Hidden File Input for Word, PDF, PowerPoint */}
+              <input
+                ref={presUploadInputRef}
+                type="file"
+                accept=".pptx,.ppt,.docx,.doc,.pdf,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/msword"
+                multiple
+                style={{ display: "none" }}
+                onChange={(e) => handleImportPresentationFiles(e.target.files)}
+              />
+
+              {/* Top Controls: Import Button & Search */}
+              <div
+                style={{
+                  padding: "10px",
+                  borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "8px",
+                }}
+              >
+                <button
+                  onClick={() => presUploadInputRef.current?.click()}
+                  disabled={presUploading}
+                  style={{
+                    width: "100%",
+                    padding: "7px 12px",
+                    borderRadius: "6px",
+                    background:
+                      "linear-gradient(135deg, #f97316 0%, #ea580c 100%)",
+                    color: "#ffffff",
+                    border: "1px solid #fb923c",
+                    fontSize: "11px",
+                    fontWeight: 800,
+                    cursor: presUploading ? "wait" : "pointer",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    gap: "6px",
+                    boxShadow: "0 0 12px rgba(249, 115, 22, 0.3)",
+                  }}
+                >
+                  <Upload size={13} />
+                  <span>
+                    {presUploading
+                      ? "Parsing Slides / Pages..."
+                      : "Import Word, PDF, or PowerPoint"}
+                  </span>
+                </button>
+
+                {/* Search Input */}
+                <div style={{ position: "relative" }}>
+                  <Search
+                    size={13}
+                    color="#64748b"
+                    style={{
+                      position: "absolute",
+                      left: "10px",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                    }}
+                  />
+                  <input
+                    type="text"
+                    value={presQuery}
+                    onChange={(e) => setPresQuery(e.target.value)}
+                    placeholder="Search Word, PDF, PowerPoint..."
+                    style={{
+                      width: "100%",
+                      padding: "6px 28px 6px 30px",
+                      background: "rgba(0, 0, 0, 0.6)",
+                      color: "#ffffff",
+                      border: "1px solid rgba(255, 255, 255, 0.15)",
+                      borderRadius: "6px",
+                      fontSize: "12px",
+                      fontWeight: 600,
+                      outline: "none",
+                    }}
+                  />
+                  {presQuery && (
+                    <button
+                      onClick={() => setPresQuery("")}
+                      style={{
+                        position: "absolute",
+                        right: "8px",
+                        top: "50%",
+                        transform: "translateY(-50%)",
+                        background: "transparent",
+                        border: "none",
+                        color: "#94a3b8",
+                        cursor: "pointer",
+                        padding: 0,
+                        display: "flex",
+                      }}
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+
+                {/* Filter Pills: All | PPT | Word | PDF */}
+                <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
+                  {(
+                    [
+                      { id: "all", label: "All" },
+                      { id: "pptx", label: "PowerPoint" },
+                      { id: "docx", label: "Word" },
+                      { id: "pdf", label: "PDF" },
+                    ] as const
+                  ).map((f) => {
+                    const active = presFilter === f.id;
+                    return (
+                      <button
+                        key={f.id}
+                        onClick={() => setPresFilter(f.id)}
+                        style={{
+                          flex: 1,
+                          padding: "4px 6px",
+                          borderRadius: "5px",
+                          background: active
+                            ? "rgba(249, 115, 22, 0.2)"
+                            : "rgba(30, 41, 59, 0.6)",
+                          border: active
+                            ? "1px solid #f97316"
+                            : "1px solid rgba(255, 255, 255, 0.06)",
+                          color: active ? "#fb923c" : "#94a3b8",
+                          fontSize: "10px",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {f.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Presentations List */}
+              <div
+                style={{
+                  flex: 1,
+                  overflowY: "auto",
+                  padding: "6px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "5px",
+                }}
+              >
+                {filteredPresentationItems.length === 0 ? (
+                  <div
+                    style={{
+                      padding: "28px 16px",
+                      textAlign: "center",
+                      color: "#64748b",
+                      fontSize: "12px",
+                    }}
+                  >
+                    No presentations or documents found. Import `.pptx`, `.docx`,
+                    or `.pdf` files above.
+                  </div>
+                ) : (
+                  filteredPresentationItems.map((item) => {
+                    const isSelected = selectedPresentation?.id === item.id;
+                    const isLive =
+                      state.category === "presentation" &&
+                      state.title === item.title;
+                    const docType = item.docType || "pptx";
+                    const typeColor =
+                      docType === "pptx"
+                        ? "#f97316"
+                        : docType === "docx"
+                        ? "#3b82f6"
+                        : "#ef4444";
+                    const unitWord = docType === "pptx" ? "slides" : "pages";
+
+                    return (
+                      <div
+                        key={item.id}
+                        onClick={() => handleSelectPresentation(item, false, 0)}
+                        onDoubleClick={() =>
+                          handleSelectPresentation(item, true, 0)
+                        }
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "10px",
+                          padding: "8px",
+                          borderRadius: "7px",
+                          background: isSelected
+                            ? "linear-gradient(90deg, rgba(249, 115, 22, 0.2) 0%, rgba(249, 115, 22, 0.06) 100%)"
+                            : "rgba(30, 41, 59, 0.45)",
+                          border: isSelected
+                            ? "1px solid rgba(249, 115, 22, 0.5)"
+                            : "1px solid rgba(255, 255, 255, 0.05)",
+                          borderLeft: `3px solid ${typeColor}`,
+                          cursor: "pointer",
+                          transition: "all 0.12s ease",
+                        }}
+                      >
+                        {/* Doc Type Badge Icon */}
+                        <div
+                          style={{
+                            width: "38px",
+                            height: "34px",
+                            borderRadius: "6px",
+                            background: "rgba(15, 23, 42, 0.9)",
+                            border: `1px solid ${typeColor}55`,
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                          }}
+                        >
+                          <FileText size={12} color={typeColor} />
+                          <span
+                            style={{
+                              fontSize: "8px",
+                              fontWeight: 900,
+                              color: typeColor,
+                              textTransform: "uppercase",
+                              marginTop: "1px",
+                            }}
+                          >
+                            {docType}
+                          </span>
+                        </div>
+
+                        {/* Title & Slide/Page Count */}
+                        <div
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "2px",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "6px",
+                            }}
+                          >
+                            <span
+                              style={{
+                                fontSize: "12px",
+                                fontWeight: 700,
+                                color: isSelected ? "#ffffff" : "#e2e8f0",
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {item.title}
+                            </span>
+                            {isLive && (
+                              <span
+                                style={{
+                                  fontSize: "8px",
+                                  fontWeight: 800,
+                                  padding: "1px 5px",
+                                  borderRadius: "4px",
+                                  background: "rgba(239, 68, 68, 0.25)",
+                                  color: "#f87171",
+                                  border: "1px solid rgba(239, 68, 68, 0.5)",
+                                }}
+                              >
+                                LIVE
+                              </span>
+                            )}
+                          </div>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "6px",
+                              fontSize: "10px",
+                              color: "#94a3b8",
+                            }}
+                          >
+                            <span style={{ color: typeColor, fontWeight: 700 }}>
+                              {item.lines.length} {unitWord}
+                            </span>
+                            <span>•</span>
+                            <span>{item.author || "Document"}</span>
+                          </div>
+                        </div>
+
+                        {/* Quick Actions */}
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "4px",
+                          }}
+                        >
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleAddPresentationToSchedule(item);
+                            }}
+                            title="Add to Service Schedule"
+                            style={{
+                              padding: "4px 6px",
+                              borderRadius: "4px",
+                              background: "rgba(56, 189, 248, 0.12)",
+                              border: "1px solid rgba(56, 189, 248, 0.3)",
+                              color: "#38bdf8",
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                            }}
+                          >
+                            <ListPlus size={12} />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleSelectPresentation(item, true, 0);
+                            }}
+                            title="Send Presentation to Live"
+                            style={{
+                              padding: "4px 7px",
+                              borderRadius: "4px",
+                              background:
+                                "linear-gradient(135deg, #f97316 0%, #ea580c 100%)",
+                              border: "none",
+                              color: "#ffffff",
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              fontSize: "10px",
+                              fontWeight: 800,
+                            }}
+                          >
+                            <Play size={10} fill="#ffffff" />
+                          </button>
+                          {!item.id.startsWith("pres-default-") && (
+                            <button
+                              onClick={(e) =>
+                                handleDeletePresentation(item.id, e)
+                              }
+                              title="Remove from Library"
+                              style={{
+                                padding: "4px",
+                                borderRadius: "4px",
+                                background: "transparent",
+                                border: "none",
+                                color: "#64748b",
+                                cursor: "pointer",
+                                display: "flex",
+                                alignItems: "center",
+                              }}
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+
+            {/* Right Sub-Column: Slide / Page Navigator & Interactive Slide Deck */}
+            <div
+              style={{
+                flex: 1,
+                display: "flex",
+                flexDirection: "column",
+                background: "#090d16",
+                overflow: "hidden",
+              }}
+            >
+              {selectedPresentation ? (
+                <>
+                  {/* Presentation Header & Direct Slide/Page Navigator Bar */}
+                  {(() => {
+                    const docType =
+                      selectedPresentation.docType || "pptx";
+                    const unitSingular = docType === "pptx" ? "Slide" : "Page";
+                    const unitPlural = docType === "pptx" ? "Slides" : "Pages";
+                    const totalSlides = currentPresentationSlides.length;
+                    const activeIdx = Math.min(
+                      selectedPresSlideIndex,
+                      Math.max(0, totalSlides - 1),
+                    );
+                    const badgeColor =
+                      docType === "pptx"
+                        ? "#f97316"
+                        : docType === "docx"
+                        ? "#3b82f6"
+                        : "#ef4444";
+
+                    return (
+                      <div
+                        style={{
+                          padding: "8px 16px",
+                          background: "#0f172a",
+                          borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          flexWrap: "wrap",
+                          gap: "10px",
+                        }}
+                      >
+                        {/* Title & Badge */}
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "10px",
+                            minWidth: 0,
+                          }}
+                        >
+                          <span
+                            style={{
+                              padding: "3px 8px",
+                              borderRadius: "5px",
+                              background: `${badgeColor}22`,
+                              border: `1px solid ${badgeColor}`,
+                              color: badgeColor,
+                              fontSize: "10px",
+                              fontWeight: 800,
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            {docType === "pptx"
+                              ? "PowerPoint"
+                              : docType === "docx"
+                              ? "Word Doc"
+                              : "PDF"}
+                          </span>
+                          <div>
+                            <div
+                              style={{
+                                fontSize: "13px",
+                                fontWeight: 800,
+                                color: "#ffffff",
+                              }}
+                            >
+                              {selectedPresentation.title}
+                            </div>
+                            <div style={{ fontSize: "10px", color: "#64748b" }}>
+                              {totalSlides} {unitPlural} • Navigate {unitSingular}{" "}
+                              below or jump directly
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Center: Direct Slide / Page Navigation Controls */}
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "6px",
+                            background: "rgba(15, 23, 42, 0.9)",
+                            border: "1px solid rgba(255, 255, 255, 0.12)",
+                            padding: "3px 6px",
+                            borderRadius: "7px",
+                          }}
+                        >
+                          <button
+                            onClick={() =>
+                              handleSelectPresSlide(activeIdx - 1, false)
+                            }
+                            disabled={activeIdx <= 0}
+                            title={`Previous ${unitSingular}`}
+                            style={{
+                              padding: "4px 8px",
+                              borderRadius: "5px",
+                              background:
+                                activeIdx <= 0
+                                  ? "transparent"
+                                  : "rgba(56, 189, 248, 0.15)",
+                              border: "none",
+                              color: activeIdx <= 0 ? "#475569" : "#38bdf8",
+                              fontSize: "11px",
+                              fontWeight: 700,
+                              cursor:
+                                activeIdx <= 0 ? "not-allowed" : "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "3px",
+                            }}
+                          >
+                            <ChevronLeft size={13} />
+                            <span>Prev {unitSingular}</span>
+                          </button>
+
+                          {/* Direct Jump Dropdown for Slide / Page */}
+                          <select
+                            value={activeIdx}
+                            onChange={(e) =>
+                              handleSelectPresSlide(
+                                parseInt(e.target.value, 10) || 0,
+                                false,
+                              )
+                            }
+                            style={{
+                              padding: "4px 8px",
+                              borderRadius: "5px",
+                              background: "#090d16",
+                              color: "#ffffff",
+                              border: "1px solid rgba(255, 255, 255, 0.18)",
+                              fontSize: "11px",
+                              fontWeight: 700,
+                              outline: "none",
+                              cursor: "pointer",
+                            }}
+                          >
+                            {currentPresentationSlides.map((raw, i) => {
+                              const p = parseSlidePayload(raw);
+                              const labelText =
+                                p?.heading || `${unitSingular} ${i + 1}`;
+                              return (
+                                <option key={i} value={i}>
+                                  {unitSingular} {i + 1} of {totalSlides} —{" "}
+                                  {labelText.slice(0, 32)}
+                                </option>
+                              );
+                            })}
+                          </select>
+
+                          <button
+                            onClick={() =>
+                              handleSelectPresSlide(activeIdx + 1, false)
+                            }
+                            disabled={activeIdx >= totalSlides - 1}
+                            title={`Next ${unitSingular}`}
+                            style={{
+                              padding: "4px 8px",
+                              borderRadius: "5px",
+                              background:
+                                activeIdx >= totalSlides - 1
+                                  ? "transparent"
+                                  : "rgba(56, 189, 248, 0.15)",
+                              border: "none",
+                              color:
+                                activeIdx >= totalSlides - 1
+                                  ? "#475569"
+                                  : "#38bdf8",
+                              fontSize: "11px",
+                              fontWeight: 700,
+                              cursor:
+                                activeIdx >= totalSlides - 1
+                                  ? "not-allowed"
+                                  : "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "3px",
+                            }}
+                          >
+                            <span>Next {unitSingular}</span>
+                            <ChevronRight size={13} />
+                          </button>
+                        </div>
+
+                        {/* Right: Word Page Density + Add to Schedule + Project Active Slide/Page */}
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "8px",
+                          }}
+                        >
+                          {docType === "docx" && (
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                gap: "3px",
+                                background: "rgba(15, 23, 42, 0.9)",
+                                border: "1px solid rgba(255, 255, 255, 0.1)",
+                                borderRadius: "6px",
+                                padding: "2px",
+                              }}
+                              title="Control how many paragraphs appear per Word page"
+                            >
+                              {(
+                                [
+                                  { id: "standard", label: "Standard" },
+                                  { id: "compact", label: "Compact" },
+                                  { id: "headings", label: "By Heading" },
+                                  { id: "paragraphs", label: "1 Para" },
+                                ] as const
+                              ).map((m) => (
+                                <button
+                                  key={m.id}
+                                  onClick={() => handleWordSplitModeChange(m.id)}
+                                  style={{
+                                    padding: "3px 6px",
+                                    borderRadius: "4px",
+                                    border: "none",
+                                    background:
+                                      wordSplitMode === m.id
+                                        ? "#3b82f6"
+                                        : "transparent",
+                                    color:
+                                      wordSplitMode === m.id
+                                        ? "#ffffff"
+                                        : "#94a3b8",
+                                    fontSize: "10px",
+                                    fontWeight: 700,
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  {m.label}
+                                </button>
+                              ))}
+                            </div>
+                          )}
+
+                          <button
+                            onClick={() =>
+                              handleAddPresentationToSchedule(
+                                selectedPresentation,
+                                currentPresentationSlides,
+                              )
+                            }
+                            style={{
+                              padding: "5px 10px",
+                              borderRadius: "6px",
+                              background: "rgba(56, 189, 248, 0.15)",
+                              border: "1px solid rgba(56, 189, 248, 0.4)",
+                              color: "#38bdf8",
+                              fontSize: "11px",
+                              fontWeight: 700,
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "5px",
+                            }}
+                          >
+                            <ListPlus size={13} />
+                            <span>+ Schedule</span>
+                          </button>
+
+                          <button
+                            onClick={() =>
+                              handleSelectPresSlide(activeIdx, true)
+                            }
+                            style={{
+                              padding: "5px 12px",
+                              borderRadius: "6px",
+                              background:
+                                "linear-gradient(135deg, #10b981 0%, #059669 100%)",
+                              border: "none",
+                              color: "#ffffff",
+                              fontSize: "11px",
+                              fontWeight: 800,
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "5px",
+                              boxShadow: "0 0 12px rgba(16, 185, 129, 0.35)",
+                            }}
+                          >
+                            <Play size={11} fill="#ffffff" />
+                            <span>
+                              Go Live ({unitSingular} {activeIdx + 1})
+                            </span>
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Slide / Page Cards Grid */}
+                  <div
+                    style={{
+                      flex: 1,
+                      overflowY: "auto",
+                      padding: "14px 16px",
+                      display: "grid",
+                      gridTemplateColumns:
+                        "repeat(auto-fill, minmax(250px, 1fr))",
+                      gap: "12px",
+                      alignContent: "start",
+                    }}
+                  >
+                    {currentPresentationSlides.map((rawSlide, idx) => {
+                      const payload = parseSlidePayload(rawSlide);
+                      const docType =
+                        payload?.docType ||
+                        selectedPresentation.docType ||
+                        "pptx";
+                      const unitSingular = docType === "pptx" ? "Slide" : "Page";
+                      const isPreviewSelected = selectedPresSlideIndex === idx;
+                      const isLive =
+                        state.category === "presentation" &&
+                        state.title === selectedPresentation.title &&
+                        state.cur === idx;
+                      const accentColor =
+                        docType === "pptx"
+                          ? "#f97316"
+                          : docType === "docx"
+                          ? "#3b82f6"
+                          : "#ef4444";
+
+                      return (
+                        <div
+                          key={idx}
+                          onClick={() => handleSelectPresSlide(idx, false)}
+                          onDoubleClick={() => handleSelectPresSlide(idx, true)}
+                          style={{
+                            borderRadius: "10px",
+                            padding: "12px",
+                            background: isLive
+                              ? "linear-gradient(145deg, rgba(239, 68, 68, 0.16) 0%, rgba(15, 23, 42, 0.95) 100%)"
+                              : isPreviewSelected
+                              ? "linear-gradient(145deg, rgba(56, 189, 248, 0.16) 0%, rgba(15, 23, 42, 0.95) 100%)"
+                              : "rgba(15, 23, 42, 0.85)",
+                            border: isLive
+                              ? "2px solid #ef4444"
+                              : isPreviewSelected
+                              ? "2px solid #38bdf8"
+                              : "1px solid rgba(255, 255, 255, 0.08)",
+                            cursor: "pointer",
+                            display: "flex",
+                            flexDirection: "column",
+                            justifyContent: "space-between",
+                            minHeight: "170px",
+                            transition: "all 0.12s ease",
+                          }}
+                        >
+                          {/* Card Top Header */}
+                          <div>
+                            <div
+                              style={{
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                marginBottom: "8px",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  fontSize: "10px",
+                                  fontWeight: 800,
+                                  padding: "2px 8px",
+                                  borderRadius: "999px",
+                                  background: `${accentColor}22`,
+                                  color: accentColor,
+                                  border: `1px solid ${accentColor}55`,
+                                }}
+                              >
+                                {unitSingular} {idx + 1} of{" "}
+                                {currentPresentationSlides.length}
+                              </span>
+
+                              {isLive ? (
+                                <span
+                                  style={{
+                                    fontSize: "9px",
+                                    fontWeight: 800,
+                                    padding: "2px 6px",
+                                    borderRadius: "4px",
+                                    background: "#ef4444",
+                                    color: "#ffffff",
+                                  }}
+                                >
+                                  LIVE
+                                </span>
+                              ) : isPreviewSelected ? (
+                                <span
+                                  style={{
+                                    fontSize: "9px",
+                                    fontWeight: 800,
+                                    padding: "2px 6px",
+                                    borderRadius: "4px",
+                                    background: "rgba(56, 189, 248, 0.2)",
+                                    color: "#38bdf8",
+                                  }}
+                                >
+                                  PREVIEW
+                                </span>
+                              ) : null}
+                            </div>
+
+                            {/* Slide / Page Heading */}
+                            {payload?.heading && (
+                              <div
+                                style={{
+                                  fontSize: "13px",
+                                  fontWeight: 800,
+                                  color: "#ffffff",
+                                  marginBottom: "6px",
+                                  lineHeight: 1.3,
+                                }}
+                              >
+                                {payload.heading}
+                              </div>
+                            )}
+
+                            {/* Bullets or Body Preview */}
+                            {Array.isArray(payload?.bullets) &&
+                            payload!.bullets!.length > 0 ? (
+                              <div
+                                style={{
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: "4px",
+                                }}
+                              >
+                                {payload!.bullets!.slice(0, 4).map((b, bIdx) => (
+                                  <div
+                                    key={bIdx}
+                                    style={{
+                                      display: "flex",
+                                      alignItems: "flex-start",
+                                      gap: "6px",
+                                      fontSize: "11px",
+                                      color: "#cbd5e1",
+                                      lineHeight: 1.35,
+                                    }}
+                                  >
+                                    <span
+                                      style={{
+                                        color: accentColor,
+                                        fontWeight: 900,
+                                      }}
+                                    >
+                                      •
+                                    </span>
+                                    <span
+                                      style={{
+                                        overflow: "hidden",
+                                        display: "-webkit-box",
+                                        WebkitLineClamp: 2,
+                                        WebkitBoxOrient: "vertical",
+                                      }}
+                                    >
+                                      {b}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div
+                                style={{
+                                  fontSize: "11.5px",
+                                  color: "#cbd5e1",
+                                  lineHeight: 1.45,
+                                  whiteSpace: "pre-line",
+                                  overflow: "hidden",
+                                  display: "-webkit-box",
+                                  WebkitLineClamp: 4,
+                                  WebkitBoxOrient: "vertical",
+                                }}
+                              >
+                                {payload?.body || rawSlide}
+                              </div>
+                            )}
+
+                            {/* Embedded Image Thumbnail if present */}
+                            {payload?.imageUrl && (
+                              <div
+                                style={{
+                                  marginTop: "8px",
+                                  height: "64px",
+                                  borderRadius: "6px",
+                                  overflow: "hidden",
+                                  background: "#000000",
+                                  border:
+                                    "1px solid rgba(255, 255, 255, 0.1)",
+                                }}
+                              >
+                                <img
+                                  src={payload.imageUrl}
+                                  alt="Slide graphic"
+                                  style={{
+                                    width: "100%",
+                                    height: "100%",
+                                    objectFit: "contain",
+                                  }}
+                                />
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Card Footer */}
+                          <div
+                            style={{
+                              marginTop: "10px",
+                              paddingTop: "8px",
+                              borderTop: "1px solid rgba(255, 255, 255, 0.06)",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                            }}
+                          >
+                            <span style={{ fontSize: "10px", color: "#64748b" }}>
+                              Double-click to project
+                            </span>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleSelectPresSlide(idx, true);
+                              }}
+                              style={{
+                                padding: "3px 9px",
+                                borderRadius: "4px",
+                                background: isLive
+                                  ? "rgba(239, 68, 68, 0.25)"
+                                  : "rgba(255, 255, 255, 0.08)",
+                                border: isLive
+                                  ? "1px solid #ef4444"
+                                  : "1px solid rgba(255, 255, 255, 0.14)",
+                                color: isLive ? "#f87171" : "#e2e8f0",
+                                fontSize: "10px",
+                                fontWeight: 700,
+                                cursor: "pointer",
+                              }}
+                            >
+                              {isLive
+                                ? "On Screen"
+                                : `Project ${unitSingular} ${idx + 1}`}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </>
+              ) : (
+                <div
+                  style={{
+                    flex: 1,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    flexDirection: "column",
+                    gap: "8px",
+                    color: "#64748b",
+                  }}
+                >
+                  <FileText size={36} color="#334155" />
+                  <span>
+                    Select or import a PowerPoint, Word, or PDF file to navigate
+                    slides & pages
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ----------------------------------------------------------- */}
+        {/* TAB 5: THEMES                                               */}
+        {/* ----------------------------------------------------------- */}
+        {activeTab === "themes" && (
           <div
             style={{
               flex: 1,
@@ -4990,15 +7716,11 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
             <div
               style={{ fontSize: "14px", fontWeight: 700, color: "#94a3b8" }}
             >
-              {activeTab === "media"
-                ? "Media Library"
-                : activeTab === "presentations"
-                ? "Presentations & Slides"
-                : "Themes & Layouts"}
+              Themes & Layouts
             </div>
             <div style={{ fontSize: "12px" }}>
-              Ready for broadcast and display output. Use Scriptures and Songs
-              for live worship projection.
+              Use the Theme Designer button in the top bar to customize fonts,
+              backgrounds, and overlays.
             </div>
           </div>
         )}

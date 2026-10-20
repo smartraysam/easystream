@@ -20,7 +20,7 @@ export const TimerDisplayView: React.FC<TimerDisplayViewProps> = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showControls, setShowControls] = useState(false);
   const [isMouseIdle, setIsMouseIdle] = useState(false);
-  const hideTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const hideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const appliedScheduleParamRef = useRef<string | null>(null);
 
   // Jump to specific timer schedule slot and autostart countdown when URL parameter ?schedule= or ?slot= is provided

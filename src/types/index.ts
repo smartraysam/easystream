@@ -98,7 +98,32 @@ export type ScheduleCategory =
   | 'prayer'
   | 'ministration'
   | 'announcement'
+  | 'media'
+  | 'presentation'
   | 'custom';
+
+export type MediaType = 'image' | 'video';
+export type PresentationDocType = 'pptx' | 'docx' | 'pdf';
+
+export interface SlidePayload {
+  kind: 'media' | 'presentation';
+  // Media fields
+  mediaType?: MediaType;
+  mediaUrl?: string;
+  fitMode?: 'cover' | 'contain';
+  loop?: boolean;
+  muted?: boolean;
+  // Presentation fields
+  docType?: PresentationDocType;
+  pageNumber?: number;
+  totalPages?: number;
+  heading?: string;
+  body?: string;
+  bullets?: string[];
+  imageUrl?: string;
+  pdfUrl?: string;
+  notes?: string;
+}
 
 export interface LibraryItem {
   id: string;
@@ -109,6 +134,10 @@ export interface LibraryItem {
   ccli?: string;
   content: string; // raw content with stanzas separated by blank lines or lines
   lines: string[];
+  mediaType?: MediaType;
+  mediaUrl?: string;
+  docType?: PresentationDocType;
+  fileUrl?: string;
   themeOverride?: Partial<PresentationTheme>;
   createdAt: number;
   updatedAt: number;
