@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import {
   Search,
   BookOpen,
@@ -409,6 +409,7 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const suggestionsContainerRef = useRef<HTMLDivElement | null>(null);
   const addMenuRef = useRef<HTMLDivElement | null>(null);
+  const scriptureTableBodyRef = useRef<HTMLDivElement | null>(null);
 
   // Compute suggestions as user types
   const suggestions: BibleSuggestion[] = useMemo(() => {
@@ -503,6 +504,50 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
       body: slideText.replace(/^[“"']+|[”"']+$/g, '').trim(),
     };
   };
+
+  // Helper to smoothly scroll the scripture table body to the row highlighted with the LIVE mark or selection
+  const scrollToHighlightedScriptureRow = useCallback(
+    (behavior: ScrollBehavior = "smooth") => {
+      const container = scriptureTableBodyRef.current;
+      if (!container) return;
+
+      // Priority 1: Row marked LIVE
+      let targetRow = container.querySelector<HTMLElement>('[data-live="true"]');
+
+      // Priority 2: Row selected / preview
+      if (!targetRow) {
+        targetRow = container.querySelector<HTMLElement>('[data-selected="true"]');
+      }
+
+      // Priority 3: Row matching selectedVerseNumber
+      if (!targetRow && selectedVerseNumber !== null) {
+        targetRow = container.querySelector<HTMLElement>(`[data-verse="${selectedVerseNumber}"]`);
+      }
+
+      // Priority 4: Row matching start of activeVerseRange
+      if (!targetRow && activeVerseRange) {
+        targetRow = container.querySelector<HTMLElement>(`[data-verse="${activeVerseRange.start}"]`);
+      }
+
+      if (!targetRow) return;
+
+      const containerHeight = container.clientHeight;
+      const rowTop = targetRow.offsetTop;
+      const rowHeight = targetRow.offsetHeight;
+
+      // Vertically center the highlighted row within the table body viewport
+      const targetScrollTop = Math.max(
+        0,
+        rowTop - containerHeight / 2 + rowHeight / 2,
+      );
+
+      container.scrollTo({
+        top: targetScrollTop,
+        behavior,
+      });
+    },
+    [selectedVerseNumber, activeVerseRange],
+  );
 
   // -----------------------------------------------------------------
   // 5. Fetch Scripture Logic (Loads Chapter Verses for Table View)
@@ -683,6 +728,11 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
             setTimeout(() => setLiveFeedback(false), 2500);
           }
         }
+
+        // Automatically scroll scripture table so the captured verse / live mark is immediately centered in view
+        setTimeout(() => {
+          scrollToHighlightedScriptureRow("smooth");
+        }, 80);
       } else {
         setSearchError(`No verses found for "${raw}" in ${effectiveVersion}.`);
         setActiveVerseRange(null);
@@ -699,6 +749,33 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
   useEffect(() => {
     fetchScriptureData("John 3:16", "KJV", 16, false);
   }, []);
+
+  // Auto-scroll scripture table so the highlighted live/selected verse row is centered in view
+  useEffect(() => {
+    if (activeTab !== "scriptures") return;
+    if (!scriptureResult?.verses || scriptureResult.verses.length === 0) return;
+
+    const frameId = requestAnimationFrame(() => {
+      scrollToHighlightedScriptureRow("smooth");
+    });
+    const timerId = setTimeout(() => {
+      scrollToHighlightedScriptureRow("smooth");
+    }, 100);
+
+    return () => {
+      cancelAnimationFrame(frameId);
+      clearTimeout(timerId);
+    };
+  }, [
+    activeTab,
+    scriptureResult,
+    selectedVerseNumber,
+    state.cur,
+    state.title,
+    state.category,
+    activeVerseRange,
+    scrollToHighlightedScriptureRow,
+  ]);
 
   // -----------------------------------------------------------------
   // 6. Songs Tab State, Online Search, & Lyrics Splitting
@@ -1927,6 +2004,8 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
           onJumpTo(nextIdx);
           if (activeVerseRange) {
             setSelectedVerseNumber(activeVerseRange.start + nextIdx);
+          } else if (state.category === "scripture" && scriptureResult?.verses && scriptureResult.verses[nextIdx]) {
+            setSelectedVerseNumber(scriptureResult.verses[nextIdx].verse);
           }
           if (state.category === "presentation") {
             setSelectedPresSlideIndex(nextIdx);
@@ -1939,6 +2018,8 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
           onJumpTo(prevIdx);
           if (activeVerseRange) {
             setSelectedVerseNumber(activeVerseRange.start + prevIdx);
+          } else if (state.category === "scripture" && scriptureResult?.verses && scriptureResult.verses[prevIdx]) {
+            setSelectedVerseNumber(scriptureResult.verses[prevIdx].verse);
           }
           if (state.category === "presentation") {
             setSelectedPresSlideIndex(prevIdx);
@@ -1948,7 +2029,7 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [previewItem, selectedVersion, state.lines, state.cur, activeVerseRange, state.category]);
+  }, [previewItem, selectedVersion, state.lines, state.cur, activeVerseRange, state.category, scriptureResult]);
 
   // -----------------------------------------------------------------
   // 8. Themes Tab State, Handlers & Custom Theme Studio
@@ -3381,6 +3462,8 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                     onJumpTo(nextIdx);
                     if (activeVerseRange) {
                       setSelectedVerseNumber(activeVerseRange.start + nextIdx);
+                    } else if (state.category === "scripture" && scriptureResult?.verses && scriptureResult.verses[nextIdx]) {
+                      setSelectedVerseNumber(scriptureResult.verses[nextIdx].verse);
                     }
                     if (state.category === "presentation") {
                       setSelectedPresSlideIndex(nextIdx);
@@ -3435,6 +3518,8 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                     onJumpTo(nextIdx);
                     if (activeVerseRange) {
                       setSelectedVerseNumber(activeVerseRange.start + nextIdx);
+                    } else if (state.category === "scripture" && scriptureResult?.verses && scriptureResult.verses[nextIdx]) {
+                      setSelectedVerseNumber(scriptureResult.verses[nextIdx].verse);
                     }
                     if (state.category === "presentation") {
                       setSelectedPresSlideIndex(nextIdx);
@@ -3538,6 +3623,8 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                       onJumpTo(nextIdx);
                       if (activeVerseRange) {
                         setSelectedVerseNumber(activeVerseRange.start + nextIdx);
+                      } else if (state.category === "scripture" && scriptureResult?.verses && scriptureResult.verses[nextIdx]) {
+                        setSelectedVerseNumber(scriptureResult.verses[nextIdx].verse);
                       }
                       if (state.category === "presentation") {
                         setSelectedPresSlideIndex(nextIdx);
@@ -3587,6 +3674,8 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                       onJumpTo(nextIdx);
                       if (activeVerseRange) {
                         setSelectedVerseNumber(activeVerseRange.start + nextIdx);
+                      } else if (state.category === "scripture" && scriptureResult?.verses && scriptureResult.verses[nextIdx]) {
+                        setSelectedVerseNumber(scriptureResult.verses[nextIdx].verse);
                       }
                       if (state.category === "presentation") {
                         setSelectedPresSlideIndex(nextIdx);
@@ -3861,7 +3950,31 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
             >
               {/* Scripture Search Box (With Intelligent Space Controls & Autocomplete) */}
               <div style={{ padding: "8px", position: "relative" }}>
-                <div style={{ position: "relative" }}>
+                <form
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    if (
+                      showSuggestions &&
+                      activeSuggestionIndex >= 0 &&
+                      suggestions[activeSuggestionIndex]
+                    ) {
+                      const chosen = suggestions[activeSuggestionIndex].text;
+                      setSearchQuery(chosen);
+                      setShowSuggestions(false);
+                      fetchScriptureData(chosen, selectedVersion, null, true, true);
+                      return;
+                    }
+                    setShowSuggestions(false);
+                    fetchScriptureData(
+                      searchQuery,
+                      selectedVersion,
+                      null,
+                      true,
+                      true,
+                    );
+                  }}
+                  style={{ position: "relative" }}
+                >
                   <input
                     ref={searchInputRef}
                     type="text"
@@ -4123,7 +4236,7 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                     }}
                     style={{
                       width: "100%",
-                      padding: "6px 10px",
+                      padding: "6px 34px 6px 10px",
                       background: "rgba(0, 0, 0, 0.6)",
                       color: "#ffffff",
                       border: "1px solid rgba(255, 255, 255, 0.15)",
@@ -4133,6 +4246,28 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                       outline: "none",
                     }}
                   />
+                  <button
+                    type="submit"
+                    title="Search & Go Live (Enter)"
+                    style={{
+                      position: "absolute",
+                      right: "4px",
+                      top: "50%",
+                      transform: "translateY(-50%)",
+                      background: "rgba(56, 189, 248, 0.15)",
+                      border: "1px solid rgba(56, 189, 248, 0.35)",
+                      borderRadius: "4px",
+                      color: "#38bdf8",
+                      padding: "4px 7px",
+                      cursor: "pointer",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      zIndex: 2,
+                    }}
+                  >
+                    <Search size={12} />
+                  </button>
 
                   {/* Suggestions Floating Overlay */}
                   {showSuggestions && suggestions.length > 0 && (
@@ -4163,13 +4298,12 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                               e.preventDefault();
                               setSearchQuery(sug.text);
                               setShowSuggestions(false);
-                              const isScriptureLive = state.category === "scripture";
                               fetchScriptureData(
                                 sug.text,
                                 selectedVersion,
                                 null,
                                 true,
-                                isScriptureLive,
+                                true,
                               );
                             }}
                             style={{
@@ -4222,7 +4356,7 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                       })}
                     </div>
                   )}
-                </div>
+                </form>
               </div>
 
               {/* SCRIPTURES Section Heading */}
@@ -4390,9 +4524,12 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
 
               {/* Table Body (Verses List) */}
               <div
+                ref={scriptureTableBodyRef}
                 style={{
                   flex: 1,
                   overflowY: "auto",
+                  position: "relative",
+                  scrollBehavior: "smooth",
                 }}
               >
                 {scriptureResult?.verses &&
@@ -4452,8 +4589,30 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                               }
                             }
                           }
+                        } else if (
+                          state.lines &&
+                          state.lines.length > state.cur &&
+                          scriptureResult?.verses &&
+                          scriptureResult.verses[state.cur]?.verse === v.verse
+                        ) {
+                          isRowLive = true;
                         } else if (selectedVerseNumber === v.verse) {
                           isRowLive = true;
+                        }
+
+                        // Also verify if current live slide specifically contains this verse reference
+                        if (!isRowLive && state.lines && state.lines[state.cur]) {
+                          const currentSlideText = state.lines[state.cur];
+                          const escapedBook = baseBookChapter
+                            .replace(/([.*+?^=!:${}()|\[\]\/\\])/g, "\\$1")
+                            .replace(/\s+/g, "\\s*");
+                          const verseRefPattern = new RegExp(
+                            `\\b${escapedBook}:${v.verse}\\b`,
+                            "i",
+                          );
+                          if (verseRefPattern.test(currentSlideText)) {
+                            isRowLive = true;
+                          }
                         }
                       }
                     }
@@ -4477,6 +4636,11 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                     return (
                       <div
                         key={v.verse}
+                        id={`scripture-row-verse-${v.verse}`}
+                        data-verse={v.verse}
+                        data-live={isRowLive ? "true" : "false"}
+                        data-selected={isRowSelected ? "true" : "false"}
+                        data-in-range={isInRange ? "true" : "false"}
                         onClick={() => {
                           setSelectedVerseNumber(v.verse);
                           if (isInRange && activeVerseRange) {

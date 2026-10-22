@@ -1011,11 +1011,16 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
         setScriptureResult(data);
         setSearchError(null);
 
+        // Resolve effective verse number (either passed explicitly or parsed from reference query)
+        const verseMatch = raw.match(/[:\s](\d+)(?:[-–—]\d+)?$/);
+        const effectiveVerseNum =
+          focusVerseNum ?? (verseMatch ? parseInt(verseMatch[1], 10) : null);
+
         // Calculate target slide index if focusing on a verse
         let targetSlideIdx = 0;
-        if (focusVerseNum !== null) {
+        if (effectiveVerseNum !== null) {
           const vIdx = data.verses.findIndex(
-            (v: OnlineScriptureVerse) => v.verse === focusVerseNum,
+            (v: OnlineScriptureVerse) => v.verse === effectiveVerseNum,
           );
           if (vIdx !== -1) {
             targetSlideIdx =
@@ -1025,6 +1030,20 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
           targetSlideIdx = Math.min(selectedSlideIndex, data.verses.length - 1);
         }
         setSelectedSlideIndex(targetSlideIdx);
+
+        if (effectiveVerseNum !== null) {
+          setTimeout(() => {
+            const container = document.getElementById("quickdeck-verses-container");
+            const targetBtn = document.getElementById(`quickdeck-verse-${effectiveVerseNum}`);
+            if (container && targetBtn) {
+              const btnTop = targetBtn.offsetTop;
+              container.scrollTo({
+                top: Math.max(0, btnTop - container.clientHeight / 2),
+                behavior: "smooth",
+              });
+            }
+          }, 80);
+        }
 
         if (autoGoLive) {
           const slides = formatSlidesFromData(
@@ -4952,6 +4971,7 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
               </div>
 
               <div
+                id="quickdeck-verses-container"
                 style={{
                   flex: 1,
                   overflowY: "auto",
@@ -4970,6 +4990,7 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                       return (
                         <button
                           key={v.verse}
+                          id={`quickdeck-verse-${v.verse}`}
                           onClick={() => handleSelectVerse(v.verse)}
                           style={{
                             padding: "8px 0",
