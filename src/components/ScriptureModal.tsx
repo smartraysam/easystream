@@ -86,8 +86,17 @@ export const ScriptureModal: React.FC<ScriptureModalProps> = ({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const hasScriptureFocusedRef = useRef(false);
   // Active slide preview index
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
+
+  const handleClearSearch = () => {
+    setQuery("");
+    setShowSuggestions(false);
+    setActiveSuggestionIndex(-1);
+    setResult(null);
+    inputRef.current?.focus();
+  };
 
   // Book browser drawer state
   const [showBookBrowser, setShowBookBrowser] = useState(false);
@@ -566,6 +575,55 @@ export const ScriptureModal: React.FC<ScriptureModalProps> = ({
                 onChange={(e) => {
                   const val = e.target.value;
 
+                  // A. If completely cleared (empty or whitespace only)
+                  if (!val.trim()) {
+                    setQuery("");
+                    setShowSuggestions(false);
+                    setActiveSuggestionIndex(-1);
+                    setResult(null);
+                    return;
+                  }
+
+                  // B. If existing query had book letters and the new value has NO book letters at all
+                  // Clear the remaining chapter and verse as requested!
+                  const hadBookLetters = /[a-zA-Z]/.test(query);
+                  const hasNoBookLetters = !/[a-zA-Z]/.test(val);
+                  if (hadBookLetters && hasNoBookLetters) {
+                    setQuery("");
+                    setShowSuggestions(false);
+                    setActiveSuggestionIndex(-1);
+                    setResult(null);
+                    return;
+                  }
+
+                  // C. Check if user cleared the existing book name and started typing a new book name
+                  const prevRefMatch = query.match(
+                    /^([1-3]?\s*[a-zA-Z\s]+?)\s+(\d+)(?::\d+(?:-\d+)?)?$/
+                  );
+                  if (prevRefMatch) {
+                    const prevBook = prevRefMatch[1].trim();
+                    const prevSuffix = query.slice(prevBook.length);
+                    if (
+                      prevSuffix &&
+                      val.endsWith(prevSuffix) &&
+                      val.length > prevSuffix.length
+                    ) {
+                      const newBookCandidate = val
+                        .slice(0, val.length - prevSuffix.length)
+                        .trim();
+                      if (
+                        newBookCandidate.toLowerCase() !==
+                        prevBook.toLowerCase()
+                      ) {
+                        setResult(null);
+                        setQuery(newBookCandidate);
+                        setShowSuggestions(true);
+                        setActiveSuggestionIndex(-1);
+                        return;
+                      }
+                    }
+                  }
+
                   // 1. Spaced verse with trailing space: e.g. "John 3 16 " -> "John 3:16-"
                   const spacedVerseTrailingSpace = val.match(
                     /^([1-3]?\s*[a-zA-Z\s]+?)\s+(\d+)\s+(\d+)\s+$/,
@@ -670,8 +728,20 @@ export const ScriptureModal: React.FC<ScriptureModalProps> = ({
                     setShowSuggestions(false);
                   }
                 }}
-                onFocus={() => {
-                  if (query.trim().length > 0) setShowSuggestions(true);
+                onFocus={(e) => {
+                  if (query.trim().length > 0) {
+                    setShowSuggestions(true);
+                    e.currentTarget.select();
+                  }
+                }}
+                onMouseUp={(e) => {
+                  if (!hasScriptureFocusedRef.current) {
+                    hasScriptureFocusedRef.current = true;
+                    e.currentTarget.select();
+                  }
+                }}
+                onBlur={() => {
+                  hasScriptureFocusedRef.current = false;
                 }}
                 onKeyDown={(e) => {
                   // Tab or Space completion
@@ -810,7 +880,7 @@ export const ScriptureModal: React.FC<ScriptureModalProps> = ({
                 placeholder="Search scripture reference e.g., 'John 3:16', 'Psalm 23', 'Romans 8:28-39' or 'Gen 1:1'..."
                 style={{
                   width: "100%",
-                  padding: "12px 14px 12px 42px",
+                  padding: "12px 48px 12px 42px",
                   background: "rgba(15, 23, 42, 0.8)",
                   border: "1px solid rgba(56, 189, 248, 0.4)",
                   borderRadius: "10px",
@@ -822,22 +892,48 @@ export const ScriptureModal: React.FC<ScriptureModalProps> = ({
                 }}
               />
 
-              {loading && (
-                <div
-                  style={{
-                    position: "absolute",
-                    right: "14px",
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                  }}
-                >
+              <div
+                style={{
+                  position: "absolute",
+                  right: "14px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  zIndex: 2,
+                }}
+              >
+                {loading && (
                   <Loader2
                     size={16}
                     color="#38bdf8"
                     className="spin-animation"
                   />
-                </div>
-              )}
+                )}
+                {query && (
+                  <button
+                    type="button"
+                    onClick={handleClearSearch}
+                    style={{
+                      background: "rgba(255, 255, 255, 0.1)",
+                      border: "none",
+                      borderRadius: "50%",
+                      width: "20px",
+                      height: "20px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#94a3b8",
+                      cursor: "pointer",
+                      padding: 0,
+                    }}
+                    title="Clear scripture search"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
 
               {/* Suggestions Dropdown */}
               {showSuggestions && suggestions.length > 0 && (

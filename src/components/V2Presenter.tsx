@@ -315,6 +315,7 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
   const [activeSuggestionIndex, setActiveSuggestionIndex] = useState(-1);
   const searchInputRef = useRef<HTMLInputElement | null>(null);
   const suggestionsContainerRef = useRef<HTMLDivElement | null>(null);
+  const hasScriptureFocusedRef = useRef(false);
 
   // -------------------------------------------------------------
   // EasyWorship 3-Panel State: Books | Chapters | Verses
@@ -326,7 +327,7 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
   const [selectedBook, setSelectedBook] = useState<BibleBook>(
     BIBLE_BOOKS.find((b) => b.name === "John") || BIBLE_BOOKS[42],
   );
-  const [selectedChapter, setSelectedChapter] = useState<number>(3);
+  const [selectedChapter, setSelectedChapter] = useState<number | null>(3);
   const [selectedVerseNumber, setSelectedVerseNumber] = useState<number | null>(
     16,
   );
@@ -1085,11 +1086,25 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     fetchScripture("John 3:16", selectedVersion, false, 16);
   }, []);
 
+  // Clear scripture search reference and reset chapter and verse
+  const handleClearScriptureSearch = () => {
+    setSearchQuery("");
+    setShowSuggestions(false);
+    setActiveSuggestionIndex(-1);
+    setSelectedChapter(null);
+    setSelectedVerseNumber(null);
+    setScriptureResult(null);
+    searchInputRef.current?.focus();
+  };
+
   // Handle suggestion click / selection
   const handleSelectSuggestion = (sug: BibleSuggestion) => {
     if (sug.type === "book") {
+      setSelectedChapter(null);
+      setSelectedVerseNumber(null);
       updateQueryAndFocusEnd(`${sug.text} `);
     } else if (sug.type === "chapter") {
+      setSelectedVerseNumber(null);
       updateQueryAndFocusEnd(`${sug.text}:`);
     } else if (sug.type === "verse" || sug.type === "version") {
       setSearchQuery(sug.text);
@@ -1114,13 +1129,15 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
   const handleSelectChapter = (ch: number) => {
     setSelectedChapter(ch);
     setSelectedVerseNumber(null);
-    const newRef = `${selectedBook.name} ${ch}`;
+    const bookName = selectedBook ? selectedBook.name : "Genesis";
+    const newRef = `${bookName} ${ch}`;
     setSearchQuery(newRef);
     fetchScripture(newRef, selectedVersion, false);
   };
 
   // When verse is clicked in EasyWorship Column 3
   const handleSelectVerse = (verseNum: number | null) => {
+    if (!selectedChapter || !selectedBook) return;
     setSelectedVerseNumber(verseNum);
     const isScriptureLive = state.category === "scripture";
     if (verseNum === null) {
@@ -2765,6 +2782,64 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                 onChange={(e) => {
                   const val = e.target.value;
 
+                  // A. If completely cleared (empty or whitespace only)
+                  if (!val.trim()) {
+                    setSearchQuery("");
+                    setShowSuggestions(false);
+                    setActiveSuggestionIndex(-1);
+                    setSelectedChapter(null);
+                    setSelectedVerseNumber(null);
+                    setScriptureResult(null);
+                    return;
+                  }
+
+                  // B. If existing query had book letters and the new value has NO book letters at all
+                  // (e.g. user had "John 3:16" or "Gen 1" and cleared/deleted the Bible name, leaving " 3:16", "3:16", ":16", " 1", etc.)
+                  // Clear the remaining chapter and verse as requested!
+                  const hadBookLetters = /[a-zA-Z]/.test(searchQuery);
+                  const hasNoBookLetters = !/[a-zA-Z]/.test(val);
+                  if (hadBookLetters && hasNoBookLetters) {
+                    setSearchQuery("");
+                    setShowSuggestions(false);
+                    setActiveSuggestionIndex(-1);
+                    setSelectedChapter(null);
+                    setSelectedVerseNumber(null);
+                    setScriptureResult(null);
+                    return;
+                  }
+
+                  // C. Check if user cleared the existing book name and started typing a new book name
+                  // (e.g. had "John 3:16", highlighted "John" and typed "m" -> val is "m 3:16")
+                  // In this case, the trailing chapter and verse from the previous book should be stripped.
+                  const prevRefMatch = searchQuery.match(
+                    /^([1-3]?\s*[a-zA-Z\s]+?)\s+(\d+)(?::\d+(?:-\d+)?)?$/
+                  );
+                  if (prevRefMatch) {
+                    const prevBook = prevRefMatch[1].trim();
+                    const prevSuffix = searchQuery.slice(prevBook.length); // e.g. " 3:16" or " 3"
+                    if (
+                      prevSuffix &&
+                      val.endsWith(prevSuffix) &&
+                      val.length > prevSuffix.length
+                    ) {
+                      const newBookCandidate = val
+                        .slice(0, val.length - prevSuffix.length)
+                        .trim();
+                      if (
+                        newBookCandidate.toLowerCase() !==
+                        prevBook.toLowerCase()
+                      ) {
+                        setSelectedChapter(null);
+                        setSelectedVerseNumber(null);
+                        setScriptureResult(null);
+                        setSearchQuery(newBookCandidate);
+                        setShowSuggestions(true);
+                        setActiveSuggestionIndex(-1);
+                        return;
+                      }
+                    }
+                  }
+
                   // 1. Spaced verse with trailing space: e.g. "John 3 16 " -> "John 3:16-"
                   const spacedVerseTrailingSpace = val.match(
                     /^([1-3]?\s*[a-zA-Z\s]+?)\s+(\d+)\s+(\d+)\s+$/,
@@ -2869,8 +2944,20 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                     setShowSuggestions(false);
                   }
                 }}
-                onFocus={() => {
-                  if (searchQuery.trim().length > 0) setShowSuggestions(true);
+                onFocus={(e) => {
+                  if (searchQuery.trim().length > 0) {
+                    setShowSuggestions(true);
+                    e.currentTarget.select();
+                  }
+                }}
+                onMouseUp={(e) => {
+                  if (!hasScriptureFocusedRef.current) {
+                    hasScriptureFocusedRef.current = true;
+                    e.currentTarget.select();
+                  }
+                }}
+                onBlur={() => {
+                  hasScriptureFocusedRef.current = false;
                 }}
                 onKeyDown={(e) => {
                   // Tab or Space completion
@@ -3044,20 +3131,50 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                 }}
               />
 
-              {loading && (
-                <RefreshCw
-                  size={16}
-                  color="#38bdf8"
-                  style={{
-                    position: "absolute",
-                    right: "14px",
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    animation: "spin 1s linear infinite",
-                    zIndex: 2,
-                  }}
-                />
-              )}
+              <div
+                style={{
+                  position: "absolute",
+                  right: "14px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  zIndex: 2,
+                }}
+              >
+                {loading && (
+                  <RefreshCw
+                    size={16}
+                    color="#38bdf8"
+                    style={{
+                      animation: "spin 1s linear infinite",
+                    }}
+                  />
+                )}
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={handleClearScriptureSearch}
+                    style={{
+                      background: "rgba(255, 255, 255, 0.1)",
+                      border: "none",
+                      borderRadius: "50%",
+                      width: "20px",
+                      height: "20px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      color: "#94a3b8",
+                      cursor: "pointer",
+                      padding: 0,
+                    }}
+                    title="Clear scripture search"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
 
               {/* LIVE AUTOCOMPLETE SUGGESTIONS DROPDOWN (LIKE SCRIPTURE MODAL) */}
               {showSuggestions && suggestions.length > 0 && (
@@ -4945,24 +5062,31 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                       fontWeight: 600,
                     }}
                   >
-                    Ch. {selectedChapter} (
-                    {scriptureResult?.totalVerses || "..."})
+                    {selectedChapter
+                      ? `Ch. ${selectedChapter} (${scriptureResult?.totalVerses || "..."})`
+                      : "Select a chapter"}
                   </span>
                   <button
                     onClick={() => handleSelectVerse(null)}
+                    disabled={!selectedChapter}
                     style={{
                       fontSize: "9px",
                       fontWeight: 800,
                       padding: "2px 6px",
                       borderRadius: "4px",
                       background:
-                        selectedVerseNumber === null
+                        selectedChapter && selectedVerseNumber === null
                           ? "#38bdf8"
                           : "rgba(255, 255, 255, 0.06)",
                       color:
-                        selectedVerseNumber === null ? "#000000" : "#38bdf8",
+                        selectedChapter && selectedVerseNumber === null
+                          ? "#000000"
+                          : selectedChapter
+                          ? "#38bdf8"
+                          : "#64748b",
                       border: "none",
-                      cursor: "pointer",
+                      cursor: selectedChapter ? "pointer" : "default",
+                      opacity: selectedChapter ? 1 : 0.5,
                     }}
                   >
                     ALL
@@ -4982,54 +5106,69 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                   alignContent: "start",
                 }}
               >
-                {scriptureResult &&
+                {!selectedChapter ? (
+                  <div
+                    style={{
+                      gridColumn: "1 / -1",
+                      padding: "24px 8px",
+                      textAlign: "center",
+                      color: "#64748b",
+                      fontSize: "11px",
+                      fontWeight: 600,
+                    }}
+                  >
+                    Select a chapter to choose verse
+                  </div>
+                ) : scriptureResult &&
                 scriptureResult.verses &&
-                scriptureResult.verses.length > 0
-                  ? scriptureResult.verses.map((v) => {
-                      const isSelected = selectedVerseNumber === v.verse;
-                      return (
-                        <button
-                          key={v.verse}
-                          id={`quickdeck-verse-${v.verse}`}
-                          onClick={() => handleSelectVerse(v.verse)}
-                          style={{
-                            padding: "8px 0",
-                            borderRadius: "6px",
-                            background: isSelected
-                              ? "#38bdf8"
-                              : "rgba(255, 255, 255, 0.05)",
-                            border: isSelected
-                              ? "1px solid #38bdf8"
-                              : "1px solid rgba(255, 255, 255, 0.08)",
-                            color: isSelected ? "#000000" : "#e2e8f0",
-                            fontSize: "12px",
-                            fontWeight: 800,
-                            cursor: "pointer",
-                            transition: "all 0.1s",
-                          }}
-                        >
-                          {v.verse}
-                        </button>
-                      );
-                    })
-                  : Array.from({ length: 25 }, (_, i) => i + 1).map((v) => (
+                scriptureResult.verses.length > 0 ? (
+                  scriptureResult.verses.map((v) => {
+                    const isSelected = selectedVerseNumber === v.verse;
+                    return (
                       <button
-                        key={v}
-                        onClick={() => handleSelectVerse(v)}
+                        key={v.verse}
+                        id={`quickdeck-verse-${v.verse}`}
+                        onClick={() => handleSelectVerse(v.verse)}
                         style={{
                           padding: "8px 0",
                           borderRadius: "6px",
-                          background: "rgba(255, 255, 255, 0.03)",
-                          border: "1px solid rgba(255, 255, 255, 0.06)",
-                          color: "#64748b",
+                          background: isSelected
+                            ? "#38bdf8"
+                            : "rgba(255, 255, 255, 0.05)",
+                          border: isSelected
+                            ? "1px solid #38bdf8"
+                            : "1px solid rgba(255, 255, 255, 0.08)",
+                          color: isSelected ? "#000000" : "#e2e8f0",
                           fontSize: "12px",
-                          fontWeight: 700,
+                          fontWeight: 800,
                           cursor: "pointer",
+                          transition: "all 0.1s",
                         }}
                       >
-                        {v}
+                        {v.verse}
                       </button>
-                    ))}
+                    );
+                  })
+                ) : (
+                  Array.from({ length: 25 }, (_, i) => i + 1).map((v) => (
+                    <button
+                      key={v}
+                      onClick={() => handleSelectVerse(v)}
+                      style={{
+                        padding: "8px 0",
+                        borderRadius: "6px",
+                        background: "rgba(255, 255, 255, 0.03)",
+                        border: "1px solid rgba(255, 255, 255, 0.06)",
+                        color: "#64748b",
+                        fontSize: "12px",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {v}
+                    </button>
+                  ))
+                )}
               </div>
             </div>
 

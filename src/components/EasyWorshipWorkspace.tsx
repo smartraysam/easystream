@@ -410,6 +410,7 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
   const suggestionsContainerRef = useRef<HTMLDivElement | null>(null);
   const addMenuRef = useRef<HTMLDivElement | null>(null);
   const scriptureTableBodyRef = useRef<HTMLDivElement | null>(null);
+  const hasScriptureFocusedRef = useRef(false);
 
   // Compute suggestions as user types
   const suggestions: BibleSuggestion[] = useMemo(() => {
@@ -776,6 +777,17 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
     activeVerseRange,
     scrollToHighlightedScriptureRow,
   ]);
+
+  // Clear scripture search reference and reset verse and results
+  const handleClearScriptureSearch = () => {
+    setSearchQuery("");
+    setShowSuggestions(false);
+    setActiveSuggestionIndex(-1);
+    setSelectedVerseNumber(null);
+    setScriptureResult(null);
+    setActiveVerseRange(null);
+    searchInputRef.current?.focus();
+  };
 
   // -----------------------------------------------------------------
   // 6. Songs Tab State, Online Search, & Lyrics Splitting
@@ -3983,6 +3995,64 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                     onChange={(e) => {
                       const val = e.target.value;
 
+                      // A. If completely cleared (empty or whitespace only)
+                      if (!val.trim()) {
+                        setSearchQuery("");
+                        setShowSuggestions(false);
+                        setActiveSuggestionIndex(-1);
+                        setSelectedVerseNumber(null);
+                        setScriptureResult(null);
+                        setActiveVerseRange(null);
+                        return;
+                      }
+
+                      // B. If existing query had book letters and the new value has NO book letters at all
+                      // (e.g. user had "John 3:16" and cleared/deleted the Bible name, leaving " 3:16", "3:16", etc.)
+                      // Clear the remaining chapter and verse as requested!
+                      const hadBookLetters = /[a-zA-Z]/.test(searchQuery);
+                      const hasNoBookLetters = !/[a-zA-Z]/.test(val);
+                      if (hadBookLetters && hasNoBookLetters) {
+                        setSearchQuery("");
+                        setShowSuggestions(false);
+                        setActiveSuggestionIndex(-1);
+                        setSelectedVerseNumber(null);
+                        setScriptureResult(null);
+                        setActiveVerseRange(null);
+                        return;
+                      }
+
+                      // C. Check if user cleared the existing book name and started typing a new book name
+                      // (e.g. had "John 3:16", highlighted "John" and typed "m" -> val is "m 3:16")
+                      // In this case, the trailing chapter and verse from the previous book should be stripped.
+                      const prevRefMatch = searchQuery.match(
+                        /^([1-3]?\s*[a-zA-Z\s]+?)\s+(\d+)(?::\d+(?:-\d+)?)?$/
+                      );
+                      if (prevRefMatch) {
+                        const prevBook = prevRefMatch[1].trim();
+                        const prevSuffix = searchQuery.slice(prevBook.length);
+                        if (
+                          prevSuffix &&
+                          val.endsWith(prevSuffix) &&
+                          val.length > prevSuffix.length
+                        ) {
+                          const newBookCandidate = val
+                            .slice(0, val.length - prevSuffix.length)
+                            .trim();
+                          if (
+                            newBookCandidate.toLowerCase() !==
+                            prevBook.toLowerCase()
+                          ) {
+                            setSelectedVerseNumber(null);
+                            setScriptureResult(null);
+                            setActiveVerseRange(null);
+                            setSearchQuery(newBookCandidate);
+                            setShowSuggestions(true);
+                            setActiveSuggestionIndex(-1);
+                            return;
+                          }
+                        }
+                      }
+
                       // 1. Spaced verse with trailing space: e.g. "John 3 16 " -> "John 3:16-"
                       const spacedVerseTrailingSpace = val.match(
                         /^([1-3]?\s*[a-zA-Z\s]+?)\s+(\d+)\s+(\d+)\s+$/,
@@ -4090,9 +4160,20 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                         setShowSuggestions(false);
                       }
                     }}
-                    onFocus={() => {
-                      if (searchQuery.trim().length > 0)
+                    onFocus={(e) => {
+                      if (searchQuery.trim().length > 0) {
                         setShowSuggestions(true);
+                        e.currentTarget.select();
+                      }
+                    }}
+                    onMouseUp={(e) => {
+                      if (!hasScriptureFocusedRef.current) {
+                        hasScriptureFocusedRef.current = true;
+                        e.currentTarget.select();
+                      }
+                    }}
+                    onBlur={() => {
+                      hasScriptureFocusedRef.current = false;
                     }}
                     onKeyDown={(e) => {
                       // Tab or Space completion
@@ -4236,7 +4317,7 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                     }}
                     style={{
                       width: "100%",
-                      padding: "6px 34px 6px 10px",
+                      padding: "6px 56px 6px 10px",
                       background: "rgba(0, 0, 0, 0.6)",
                       color: "#ffffff",
                       border: "1px solid rgba(255, 255, 255, 0.15)",
@@ -4246,28 +4327,58 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                       outline: "none",
                     }}
                   />
-                  <button
-                    type="submit"
-                    title="Search & Go Live (Enter)"
+                  <div
                     style={{
                       position: "absolute",
                       right: "4px",
                       top: "50%",
                       transform: "translateY(-50%)",
-                      background: "rgba(56, 189, 248, 0.15)",
-                      border: "1px solid rgba(56, 189, 248, 0.35)",
-                      borderRadius: "4px",
-                      color: "#38bdf8",
-                      padding: "4px 7px",
-                      cursor: "pointer",
                       display: "flex",
                       alignItems: "center",
-                      justifyContent: "center",
+                      gap: "4px",
                       zIndex: 2,
                     }}
                   >
-                    <Search size={12} />
-                  </button>
+                    {searchQuery && (
+                      <button
+                        type="button"
+                        onClick={handleClearScriptureSearch}
+                        style={{
+                          background: "rgba(255, 255, 255, 0.1)",
+                          border: "none",
+                          borderRadius: "50%",
+                          width: "18px",
+                          height: "18px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          color: "#94a3b8",
+                          cursor: "pointer",
+                          padding: 0,
+                        }}
+                        title="Clear scripture search"
+                      >
+                        <X size={11} />
+                      </button>
+                    )}
+                    <button
+                      type="submit"
+                      title="Search & Go Live (Enter)"
+                      style={{
+                        background: "rgba(56, 189, 248, 0.15)",
+                        border: "1px solid rgba(56, 189, 248, 0.35)",
+                        borderRadius: "4px",
+                        color: "#38bdf8",
+                        padding: "4px 7px",
+                        cursor: "pointer",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Search size={12} />
+                    </button>
+                  </div>
 
                   {/* Suggestions Floating Overlay */}
                   {showSuggestions && suggestions.length > 0 && (
