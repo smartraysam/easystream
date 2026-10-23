@@ -24,7 +24,7 @@ To deploy with **Coolify** (Nixpacks or Dockerfile):
 
 - Select **Nixpacks** as Build Pack in **Coolify** (uses included [`nixpacks.toml`](./nixpacks.toml)).
 - Set port `3000` and persistent volume `/app/data`.
-- Or run locally with Docker:
+- Or run locally with Docker::
   ```bash
   docker compose up -d --build
   ```
