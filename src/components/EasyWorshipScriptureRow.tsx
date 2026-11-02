@@ -41,14 +41,26 @@ export interface EasyWorshipScriptureRowProps {
   previewItem: EasyWorshipPreviewItem;
   selectedVerseNumber: number | null;
   scriptureResult: OnlineScriptureResult;
-  onSelectVerse: (
+  onPreviewVerse?: (
+    verse: OnlineScriptureVerse,
+    verseRef: string,
+    cleanVerse: string,
+    isInRange: boolean,
+  ) => void;
+  onGoLiveVerse?: (
+    verse: OnlineScriptureVerse,
+    verseRef: string,
+    cleanVerse: string,
+    isInRange: boolean,
+  ) => void;
+  onSelectVerse?: (
     verse: OnlineScriptureVerse,
     verseRef: string,
     cleanVerse: string,
     isInRange: boolean,
     isRowLiveInRange: boolean,
   ) => void;
-  onDoubleClickVerse: (
+  onDoubleClickVerse?: (
     verse: OnlineScriptureVerse,
     verseRef: string,
     cleanVerse: string,
@@ -76,6 +88,8 @@ export const EasyWorshipScriptureRow: React.FC<EasyWorshipScriptureRowProps> = (
   previewItem,
   selectedVerseNumber,
   scriptureResult,
+  onPreviewVerse,
+  onGoLiveVerse,
   onSelectVerse,
   onDoubleClickVerse,
   onAddToSchedule,
@@ -168,6 +182,30 @@ export const EasyWorshipScriptureRow: React.FC<EasyWorshipScriptureRowProps> = (
   const isRowSelected = selectedVerseNumber === verse.verse || isRowPreview;
   const cleanVerse = verse.text.replace(/^\d+[\s:.]\s*/, "").trim();
 
+  // Single click: ONLY sends to Preview
+  const handleSingleClick = (e: React.MouseEvent) => {
+    if (onPreviewVerse) {
+      onPreviewVerse(verse, verseRef, cleanVerse, isInRange);
+    } else if (onSelectVerse) {
+      onSelectVerse(
+        verse,
+        verseRef,
+        cleanVerse,
+        isInRange,
+        isRowLiveInRange,
+      );
+    }
+  };
+
+  // Double click: Sends to Live
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    if (onGoLiveVerse) {
+      onGoLiveVerse(verse, verseRef, cleanVerse, isInRange);
+    } else if (onDoubleClickVerse) {
+      onDoubleClickVerse(verse, verseRef, cleanVerse, isInRange);
+    }
+  };
+
   return (
     <div
       id={`scripture-row-verse-${verse.verse}`}
@@ -176,18 +214,9 @@ export const EasyWorshipScriptureRow: React.FC<EasyWorshipScriptureRowProps> = (
       data-live={isRowLive ? "true" : "false"}
       data-selected={isRowSelected ? "true" : "false"}
       data-in-range={isInRange ? "true" : "false"}
-      onClick={() =>
-        onSelectVerse(
-          verse,
-          verseRef,
-          cleanVerse,
-          isInRange,
-          isRowLiveInRange,
-        )
-      }
-      onDoubleClick={() =>
-        onDoubleClickVerse(verse, verseRef, cleanVerse, isInRange)
-      }
+      title="Single-click to preview • Double-click to go live"
+      onClick={handleSingleClick}
+      onDoubleClick={handleDoubleClick}
       style={{
         display: "flex",
         alignItems: "center",

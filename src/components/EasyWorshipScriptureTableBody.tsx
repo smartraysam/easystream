@@ -26,14 +26,26 @@ export interface EasyWorshipScriptureTableBodyProps {
   selectedVerseNumber: number | null;
   loading: boolean;
   searchError: string | null;
-  onSelectVerse: (
+  onPreviewVerse?: (
+    verse: OnlineScriptureVerse,
+    verseRef: string,
+    cleanVerse: string,
+    isInRange: boolean,
+  ) => void;
+  onGoLiveVerse?: (
+    verse: OnlineScriptureVerse,
+    verseRef: string,
+    cleanVerse: string,
+    isInRange: boolean,
+  ) => void;
+  onSelectVerse?: (
     verse: OnlineScriptureVerse,
     verseRef: string,
     cleanVerse: string,
     isInRange: boolean,
     isRowLiveInRange: boolean,
   ) => void;
-  onDoubleClickVerse: (
+  onDoubleClickVerse?: (
     verse: OnlineScriptureVerse,
     verseRef: string,
     cleanVerse: string,
@@ -66,6 +78,8 @@ export const EasyWorshipScriptureTableBody = forwardRef<
       selectedVerseNumber,
       loading,
       searchError,
+      onPreviewVerse,
+      onGoLiveVerse,
       onSelectVerse,
       onDoubleClickVerse,
       onAddToSchedule,
@@ -101,6 +115,8 @@ export const EasyWorshipScriptureTableBody = forwardRef<
                 previewItem={previewItem}
                 selectedVerseNumber={selectedVerseNumber}
                 scriptureResult={scriptureResult}
+                onPreviewVerse={onPreviewVerse}
+                onGoLiveVerse={onGoLiveVerse}
                 onSelectVerse={onSelectVerse}
                 onDoubleClickVerse={onDoubleClickVerse}
                 onAddToSchedule={onAddToSchedule}

@@ -4666,7 +4666,8 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                 selectedVerseNumber={selectedVerseNumber}
                 loading={loading}
                 searchError={searchError}
-                onSelectVerse={(v, verseRef, cleanVerse, isInRange, isRowLiveInRange) => {
+                // Single-click: ONLY send to Preview
+                onPreviewVerse={(v, verseRef, cleanVerse, isInRange) => {
                   setSelectedVerseNumber(v.verse);
                   if (isInRange && activeVerseRange) {
                     const targetIdx = v.verse - activeVerseRange.start;
@@ -4680,20 +4681,32 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                         ...prev,
                         cur: targetIdx,
                       }));
-                    }
-                    if (
-                      state.category === "scripture" &&
-                      isRowLiveInRange &&
-                      state.lines &&
-                      state.lines.length > targetIdx &&
-                      targetIdx >= 0
-                    ) {
-                      onJumpTo(targetIdx);
-                      if (state.liveState.isClearText) {
-                        onUpdateLiveState({ isClearText: false });
-                      }
-                      setLiveFeedback(true);
-                      setTimeout(() => setLiveFeedback(false), 2000);
+                    } else {
+                      const rangeVerses = (scriptureResult?.verses || []).filter(
+                        (rv) =>
+                          rv.verse >= activeVerseRange.start &&
+                          rv.verse <= activeVerseRange.end,
+                      );
+                      const refHeader = `${activeVerseRange.bookChapter}:${activeVerseRange.start}-${activeVerseRange.end} (${selectedVersion})`;
+                      const rangeSlides = formatSlides({
+                        ...(scriptureResult || { reference: "", version: selectedVersion, verses: [] }),
+                        reference: `${activeVerseRange.bookChapter}:${activeVerseRange.start}-${activeVerseRange.end}`,
+                        version: selectedVersion,
+                        verses:
+                          rangeVerses.length > 0
+                            ? rangeVerses
+                            : (scriptureResult?.verses || []),
+                        versionName: "",
+                        plainContent: "",
+                        totalVerses: 0,
+                      });
+                      setPreviewItem({
+                        id: `range-${activeVerseRange.start}-${activeVerseRange.end}-${Date.now()}`,
+                        title: refHeader,
+                        category: "scripture",
+                        lines: rangeSlides,
+                        cur: targetIdx >= 0 ? targetIdx : 0,
+                      });
                     }
                   } else {
                     setActiveVerseRange(null);
@@ -4706,75 +4719,51 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                       lines: slides,
                       cur: 0,
                     });
-                    if (state.category === "scripture") {
-                      onSetLines(
-                        refStr,
-                        selectedVersion,
-                        slides,
-                        "scripture"
-                      );
-                      onJumpTo(0);
-                      if (state.liveState.isClearText) {
-                        onUpdateLiveState({ isClearText: false });
-                      }
-                      setLiveFeedback(true);
-                      setTimeout(() => setLiveFeedback(false), 2000);
-                    }
                   }
                 }}
-                onDoubleClickVerse={(v, verseRef, cleanVerse, isInRange) => {
+                // Double-click: Send to LIVE and Preview
+                onGoLiveVerse={(v, verseRef, cleanVerse, isInRange) => {
                   setSelectedVerseNumber(v.verse);
                   if (isInRange && activeVerseRange) {
                     const targetIdx = v.verse - activeVerseRange.start;
-                    if (
-                      previewItem.category === "scripture" &&
-                      previewItem.lines &&
-                      previewItem.lines.length > targetIdx &&
-                      targetIdx >= 0
-                    ) {
-                      setPreviewItem((prev) => ({
-                        ...prev,
-                        cur: targetIdx,
-                      }));
-                    }
-                    if (
-                      state.category === "scripture" &&
-                      state.lines &&
-                      state.lines.length > targetIdx &&
-                      targetIdx >= 0
-                    ) {
-                      onJumpTo(targetIdx);
-                      if (state.liveState.isClearText) {
-                        onUpdateLiveState({ isClearText: false });
-                      }
-                    } else {
-                      const rangeVerses = (scriptureResult?.verses || []).filter(
-                        (rv) =>
-                          rv.verse >= activeVerseRange.start &&
-                          rv.verse <= activeVerseRange.end
-                      );
-                      const refHeader = `${activeVerseRange.bookChapter}:${activeVerseRange.start}-${activeVerseRange.end} (${selectedVersion})`;
-                      const rangeSlides = formatSlides({
-                        ...(scriptureResult || { reference: "", version: selectedVersion, verses: [] }),
-                        reference: `${activeVerseRange.bookChapter}:${activeVerseRange.start}-${activeVerseRange.end}`,
-                        version: selectedVersion,
-                        verses: rangeVerses.length > 0
+                    const rangeVerses = (scriptureResult?.verses || []).filter(
+                      (rv) =>
+                        rv.verse >= activeVerseRange.start &&
+                        rv.verse <= activeVerseRange.end,
+                    );
+                    const refHeader = `${activeVerseRange.bookChapter}:${activeVerseRange.start}-${activeVerseRange.end} (${selectedVersion})`;
+                    const rangeSlides = formatSlides({
+                      ...(scriptureResult || { reference: "", version: selectedVersion, verses: [] }),
+                      reference: `${activeVerseRange.bookChapter}:${activeVerseRange.start}-${activeVerseRange.end}`,
+                      version: selectedVersion,
+                      verses:
+                        rangeVerses.length > 0
                           ? rangeVerses
                           : (scriptureResult?.verses || []),
-                        versionName: "",
-                        plainContent: "",
-                        totalVerses: 0
-                      });
-                      onSetLines(
-                        refHeader,
-                        selectedVersion,
-                        rangeSlides,
-                        "scripture"
-                      );
-                      onJumpTo(targetIdx);
-                      if (state.liveState.isClearText) {
-                        onUpdateLiveState({ isClearText: false });
-                      }
+                      versionName: "",
+                      plainContent: "",
+                      totalVerses: 0,
+                    });
+
+                    // Set in preview
+                    setPreviewItem({
+                      id: `range-${activeVerseRange.start}-${activeVerseRange.end}-${Date.now()}`,
+                      title: refHeader,
+                      category: "scripture",
+                      lines: rangeSlides,
+                      cur: targetIdx >= 0 ? targetIdx : 0,
+                    });
+
+                    // Set in live
+                    onSetLines(
+                      refHeader,
+                      selectedVersion,
+                      rangeSlides,
+                      "scripture",
+                    );
+                    onJumpTo(targetIdx >= 0 ? targetIdx : 0);
+                    if (state.liveState.isClearText) {
+                      onUpdateLiveState({ isClearText: false });
                     }
                     setLiveFeedback(true);
                     setTimeout(() => setLiveFeedback(false), 2000);
@@ -4782,6 +4771,8 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                     setActiveVerseRange(null);
                     const refStr = `${verseRef} (${selectedVersion})`;
                     const slides = [`${refStr}\n\n${cleanVerse}`];
+
+                    // Set in preview
                     setPreviewItem({
                       id: `verse-${v.verse}-${Date.now()}`,
                       title: refStr,
@@ -4789,11 +4780,13 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                       lines: slides,
                       cur: 0,
                     });
+
+                    // Set in live
                     onSetLines(
                       refStr,
                       selectedVersion,
                       slides,
-                      "scripture"
+                      "scripture",
                     );
                     onJumpTo(0);
                     if (state.liveState.isClearText) {
