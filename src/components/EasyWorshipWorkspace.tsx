@@ -65,6 +65,7 @@ import { OnlineSongResult, DEFAULT_WORSHIP_SONG } from "./V2Presenter";
 import { POPULAR_WORSHIP_SONGS } from "../data/popularWorshipSongs";
 import { ScheduleItemEditorModal } from "./ScheduleItemEditorModal";
 import { ThemeBackgroundLayer } from "./ThemeBackgroundLayer";
+import { EasyWorshipScriptureTableBody } from "./EasyWorshipScriptureTableBody";
 import {
   EXTENDED_THEME_PRESETS,
   ExtendedThemePreset,
@@ -4655,449 +4656,155 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
               </div>
 
               {/* Table Body (Verses List) */}
-              <div
+              <EasyWorshipScriptureTableBody
                 ref={scriptureTableBodyRef}
-                style={{
-                  flex: 1,
-                  overflowY: "auto",
-                  position: "relative",
-                  scrollBehavior: "smooth",
-                }}
-              >
-                {scriptureResult?.verses &&
-                scriptureResult.verses.length > 0 ? (
-                  scriptureResult.verses.map((v) => {
-                    const baseBookChapter =
-                      scriptureResult.reference
-                        .match(/^([1-3]?\s*[a-zA-Z\s]+?\s*\d+)/)?.[1]
-                        ?.trim() || scriptureResult.reference;
-                    const verseRef = `${baseBookChapter}:${v.verse}`;
-
-                    // Check if verse is within the currently active range (e.g. John 3:6-10)
-                    const isPassageRange =
-                      Boolean(activeVerseRange) &&
-                      activeVerseRange!.bookChapter.toLowerCase().replace(/\s+/g, "") ===
-                        baseBookChapter.toLowerCase().replace(/\s+/g, "");
-                    const isInRange =
-                      isPassageRange &&
-                      v.verse >= activeVerseRange!.start &&
-                      v.verse <= activeVerseRange!.end;
-
-                    let isRowLive = false;
-                    let isRowLiveInRange = false;
-
+                scriptureResult={scriptureResult}
+                selectedVersion={selectedVersion}
+                activeVerseRange={activeVerseRange}
+                state={state}
+                previewItem={previewItem}
+                selectedVerseNumber={selectedVerseNumber}
+                loading={loading}
+                searchError={searchError}
+                onSelectVerse={(v, verseRef, cleanVerse, isInRange, isRowLiveInRange) => {
+                  setSelectedVerseNumber(v.verse);
+                  if (isInRange && activeVerseRange) {
+                    const targetIdx = v.verse - activeVerseRange.start;
+                    if (
+                      previewItem.category === "scripture" &&
+                      previewItem.lines &&
+                      previewItem.lines.length > targetIdx &&
+                      targetIdx >= 0
+                    ) {
+                      setPreviewItem((prev) => ({
+                        ...prev,
+                        cur: targetIdx,
+                      }));
+                    }
+                    if (
+                      state.category === "scripture" &&
+                      isRowLiveInRange &&
+                      state.lines &&
+                      state.lines.length > targetIdx &&
+                      targetIdx >= 0
+                    ) {
+                      onJumpTo(targetIdx);
+                      if (state.liveState.isClearText) {
+                        onUpdateLiveState({ isClearText: false });
+                      }
+                      setLiveFeedback(true);
+                      setTimeout(() => setLiveFeedback(false), 2000);
+                    }
+                  } else {
+                    setActiveVerseRange(null);
+                    const refStr = `${verseRef} (${selectedVersion})`;
+                    const slides = [`${refStr}\n\n${cleanVerse}`];
+                    setPreviewItem({
+                      id: `verse-${v.verse}-${Date.now()}`,
+                      title: refStr,
+                      category: "scripture",
+                      lines: slides,
+                      cur: 0,
+                    });
                     if (state.category === "scripture") {
-                      if (isInRange && state.lines && state.lines.length > 0) {
-                        const liveVerseNum = activeVerseRange!.start + state.cur;
-                        if (v.verse === liveVerseNum) {
-                          isRowLive = true;
-                        }
-                        isRowLiveInRange = true;
-                      } else {
-                        const liveTitle = (state.title || "").toLowerCase();
-                        const liveMatch = liveTitle.match(
-                          /^([1-3]?\s*[a-z\s]+?\s*\d+):(\d+)(?:[-–—](\d+))?/i
-                        );
-                        if (liveMatch) {
-                          const liveChapterBook = liveMatch[1]
-                            .trim()
-                            .toLowerCase()
-                            .replace(/\s+/g, "");
-                          const currentChapterBook = baseBookChapter
-                            .trim()
-                            .toLowerCase()
-                            .replace(/\s+/g, "");
-                          if (liveChapterBook === currentChapterBook) {
-                            const startV = parseInt(liveMatch[2], 10);
-                            const endV = liveMatch[3]
-                              ? parseInt(liveMatch[3], 10)
-                              : startV;
-                            if (startV === endV) {
-                              isRowLive = v.verse === startV;
-                            } else {
-                              isRowLive = v.verse === startV + state.cur;
-                              if (v.verse >= startV && v.verse <= endV) {
-                                isRowLiveInRange = true;
-                              }
-                            }
-                          }
-                        } else if (
-                          state.lines &&
-                          state.lines.length > state.cur &&
-                          scriptureResult?.verses &&
-                          scriptureResult.verses[state.cur]?.verse === v.verse
-                        ) {
-                          isRowLive = true;
-                        } else if (selectedVerseNumber === v.verse) {
-                          isRowLive = true;
-                        }
-
-                        // Also verify if current live slide specifically contains this verse reference
-                        if (!isRowLive && state.lines && state.lines[state.cur]) {
-                          const currentSlideText = state.lines[state.cur];
-                          const escapedBook = baseBookChapter
-                            .replace(/([.*+?^=!:${}()|\[\]\/\\])/g, "\\$1")
-                            .replace(/\s+/g, "\\s*");
-                          const verseRefPattern = new RegExp(
-                            `\\b${escapedBook}:${v.verse}\\b`,
-                            "i",
-                          );
-                          if (verseRefPattern.test(currentSlideText)) {
-                            isRowLive = true;
-                          }
-                        }
+                      onSetLines(
+                        refStr,
+                        selectedVersion,
+                        slides,
+                        "scripture"
+                      );
+                      onJumpTo(0);
+                      if (state.liveState.isClearText) {
+                        onUpdateLiveState({ isClearText: false });
+                      }
+                      setLiveFeedback(true);
+                      setTimeout(() => setLiveFeedback(false), 2000);
+                    }
+                  }
+                }}
+                onDoubleClickVerse={(v, verseRef, cleanVerse, isInRange) => {
+                  setSelectedVerseNumber(v.verse);
+                  if (isInRange && activeVerseRange) {
+                    const targetIdx = v.verse - activeVerseRange.start;
+                    if (
+                      previewItem.category === "scripture" &&
+                      previewItem.lines &&
+                      previewItem.lines.length > targetIdx &&
+                      targetIdx >= 0
+                    ) {
+                      setPreviewItem((prev) => ({
+                        ...prev,
+                        cur: targetIdx,
+                      }));
+                    }
+                    if (
+                      state.category === "scripture" &&
+                      state.lines &&
+                      state.lines.length > targetIdx &&
+                      targetIdx >= 0
+                    ) {
+                      onJumpTo(targetIdx);
+                      if (state.liveState.isClearText) {
+                        onUpdateLiveState({ isClearText: false });
+                      }
+                    } else {
+                      const rangeVerses = (scriptureResult?.verses || []).filter(
+                        (rv) =>
+                          rv.verse >= activeVerseRange.start &&
+                          rv.verse <= activeVerseRange.end
+                      );
+                      const refHeader = `${activeVerseRange.bookChapter}:${activeVerseRange.start}-${activeVerseRange.end} (${selectedVersion})`;
+                      const rangeSlides = formatSlides({
+                        ...(scriptureResult || { reference: "", version: selectedVersion, verses: [] }),
+                        reference: `${activeVerseRange.bookChapter}:${activeVerseRange.start}-${activeVerseRange.end}`,
+                        version: selectedVersion,
+                        verses: rangeVerses.length > 0
+                          ? rangeVerses
+                          : (scriptureResult?.verses || []),
+                        versionName: "",
+                        plainContent: "",
+                        totalVerses: 0
+                      });
+                      onSetLines(
+                        refHeader,
+                        selectedVersion,
+                        rangeSlides,
+                        "scripture"
+                      );
+                      onJumpTo(targetIdx);
+                      if (state.liveState.isClearText) {
+                        onUpdateLiveState({ isClearText: false });
                       }
                     }
-
-                    let isRowPreview = false;
-                    if (previewItem.category === "scripture") {
-                      if (isInRange && previewItem.lines && previewItem.lines.length > 0) {
-                        const previewVerseNum =
-                          activeVerseRange!.start + (previewItem.cur || 0);
-                        isRowPreview = v.verse === previewVerseNum;
-                      }
-                    }
-
-                    const isRowSelected =
-                      selectedVerseNumber === v.verse || isRowPreview;
-
-                    const cleanVerse = v.text
-                      .replace(/^\d+[\s:.]\s*/, "")
-                      .trim();
-
-                    return (
-                      <div
-                        key={v.verse}
-                        id={`scripture-row-verse-${v.verse}`}
-                        data-verse={v.verse}
-                        data-live={isRowLive ? "true" : "false"}
-                        data-selected={isRowSelected ? "true" : "false"}
-                        data-in-range={isInRange ? "true" : "false"}
-                        onClick={() => {
-                          setSelectedVerseNumber(v.verse);
-                          if (isInRange && activeVerseRange) {
-                            const targetIdx = v.verse - activeVerseRange.start;
-                            if (
-                              previewItem.category === "scripture" &&
-                              previewItem.lines &&
-                              previewItem.lines.length > targetIdx &&
-                              targetIdx >= 0
-                            ) {
-                              setPreviewItem((prev) => ({
-                                ...prev,
-                                cur: targetIdx,
-                              }));
-                            }
-                            if (
-                              state.category === "scripture" &&
-                              isRowLiveInRange &&
-                              state.lines &&
-                              state.lines.length > targetIdx &&
-                              targetIdx >= 0
-                            ) {
-                              onJumpTo(targetIdx);
-                              if (state.liveState.isClearText) {
-                                onUpdateLiveState({ isClearText: false });
-                              }
-                              setLiveFeedback(true);
-                              setTimeout(() => setLiveFeedback(false), 2000);
-                            }
-                          } else {
-                            setActiveVerseRange(null);
-                            const refStr = `${verseRef} (${selectedVersion})`;
-                            const slides = [`${refStr}\n\n${cleanVerse}`];
-                            setPreviewItem({
-                              id: `verse-${v.verse}-${Date.now()}`,
-                              title: refStr,
-                              category: "scripture",
-                              lines: slides,
-                              cur: 0,
-                            });
-                            if (state.category === "scripture") {
-                              onSetLines(
-                                refStr,
-                                selectedVersion,
-                                slides,
-                                "scripture"
-                              );
-                              onJumpTo(0);
-                              if (state.liveState.isClearText) {
-                                onUpdateLiveState({ isClearText: false });
-                              }
-                              setLiveFeedback(true);
-                              setTimeout(() => setLiveFeedback(false), 2000);
-                            }
-                          }
-                        }}
-                        onDoubleClick={() => {
-                          setSelectedVerseNumber(v.verse);
-                          if (isInRange && activeVerseRange) {
-                            const targetIdx = v.verse - activeVerseRange.start;
-                            if (
-                              previewItem.category === "scripture" &&
-                              previewItem.lines &&
-                              previewItem.lines.length > targetIdx &&
-                              targetIdx >= 0
-                            ) {
-                              setPreviewItem((prev) => ({
-                                ...prev,
-                                cur: targetIdx,
-                              }));
-                            }
-                            if (
-                              state.category === "scripture" &&
-                              state.lines &&
-                              state.lines.length > targetIdx &&
-                              targetIdx >= 0
-                            ) {
-                              onJumpTo(targetIdx);
-                              if (state.liveState.isClearText) {
-                                onUpdateLiveState({ isClearText: false });
-                              }
-                            } else {
-                              const rangeVerses = scriptureResult.verses.filter(
-                                (rv: OnlineScriptureVerse) =>
-                                  rv.verse >= activeVerseRange.start &&
-                                  rv.verse <= activeVerseRange.end
-                              );
-                              const refHeader = `${activeVerseRange.bookChapter}:${activeVerseRange.start}-${activeVerseRange.end} (${selectedVersion})`;
-                              const rangeSlides = formatSlides({
-                                ...scriptureResult,
-                                reference: `${activeVerseRange.bookChapter}:${activeVerseRange.start}-${activeVerseRange.end}`,
-                                version: selectedVersion,
-                                verses:
-                                  rangeVerses.length > 0
-                                    ? rangeVerses
-                                    : scriptureResult.verses,
-                              });
-                              onSetLines(
-                                refHeader,
-                                selectedVersion,
-                                rangeSlides,
-                                "scripture"
-                              );
-                              onJumpTo(targetIdx);
-                              if (state.liveState.isClearText) {
-                                onUpdateLiveState({ isClearText: false });
-                              }
-                            }
-                            setLiveFeedback(true);
-                            setTimeout(() => setLiveFeedback(false), 2000);
-                          } else {
-                            setActiveVerseRange(null);
-                            const refStr = `${verseRef} (${selectedVersion})`;
-                            const slides = [`${refStr}\n\n${cleanVerse}`];
-                            setPreviewItem({
-                              id: `verse-${v.verse}-${Date.now()}`,
-                              title: refStr,
-                              category: "scripture",
-                              lines: slides,
-                              cur: 0,
-                            });
-                            onSetLines(
-                              refStr,
-                              selectedVersion,
-                              slides,
-                              "scripture"
-                            );
-                            onJumpTo(0);
-                            if (state.liveState.isClearText) {
-                              onUpdateLiveState({ isClearText: false });
-                            }
-                            setLiveFeedback(true);
-                            setTimeout(() => setLiveFeedback(false), 2000);
-                          }
-                        }}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          background: isRowLive
-                            ? "linear-gradient(90deg, rgba(239, 68, 68, 0.25) 0%, rgba(239, 68, 68, 0.08) 100%)"
-                            : isRowSelected
-                              ? "linear-gradient(90deg, rgba(56, 189, 248, 0.24) 0%, rgba(56, 189, 248, 0.08) 100%)"
-                              : isInRange
-                                ? "linear-gradient(90deg, rgba(56, 189, 248, 0.12) 0%, rgba(56, 189, 248, 0.03) 100%)"
-                                : "transparent",
-                          color:
-                            isRowLive || isRowSelected || isInRange
-                              ? "#ffffff"
-                              : "#cbd5e1",
-                          borderBottom: "1px solid rgba(255, 255, 255, 0.04)",
-                          borderLeft: isRowLive
-                            ? "3px solid #ef4444"
-                            : isRowSelected
-                              ? "3px solid #38bdf8"
-                              : isInRange
-                                ? "3px solid rgba(56, 189, 248, 0.45)"
-                                : "3px solid transparent",
-                          fontSize: "12px",
-                          cursor: "pointer",
-                          lineHeight: "26px",
-                          fontWeight:
-                            isRowLive || isRowSelected ? 600 : isInRange ? 500 : 400,
-                          transition: "all 0.1s ease",
-                        }}
-                      >
-                        <div
-                          style={{
-                            width: "95px",
-                            padding: "2px 12px",
-                            flexShrink: 0,
-                            whiteSpace: "nowrap",
-                            color: isRowLive
-                              ? "#f87171"
-                              : isRowSelected
-                                ? "#38bdf8"
-                                : isInRange
-                                  ? "#93c5fd"
-                                  : "#94a3b8",
-                            fontWeight: 700,
-                          }}
-                        >
-                          {selectedVersion}
-                        </div>
-                        <div
-                          style={{
-                            width: "140px",
-                            padding: "2px 12px",
-                            flexShrink: 0,
-                            whiteSpace: "nowrap",
-                            fontWeight: isRowLive || isRowSelected ? 700 : 500,
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "6px",
-                          }}
-                        >
-                          <span>{verseRef}</span>
-                          {isRowLive ? (
-                            <span
-                              style={{
-                                fontSize: "8.5px",
-                                fontWeight: 800,
-                                background: "#ef4444",
-                                color: "#ffffff",
-                                padding: "0 4px",
-                                borderRadius: "3px",
-                                lineHeight: "15px",
-                                letterSpacing: "0.04em",
-                              }}
-                            >
-                              LIVE
-                            </span>
-                          ) : isRowSelected ? (
-                            <span
-                              style={{
-                                fontSize: "8.5px",
-                                fontWeight: 700,
-                                background: "rgba(56, 189, 248, 0.2)",
-                                color: "#38bdf8",
-                                border: "1px solid rgba(56, 189, 248, 0.4)",
-                                padding: "0 4px",
-                                borderRadius: "3px",
-                                lineHeight: "13px",
-                              }}
-                            >
-                              PREV
-                            </span>
-                          ) : isInRange ? (
-                            <span
-                              style={{
-                                fontSize: "8px",
-                                fontWeight: 600,
-                                background: "rgba(148, 163, 184, 0.15)",
-                                color: "#94a3b8",
-                                padding: "0 3px",
-                                borderRadius: "2px",
-                                lineHeight: "13px",
-                              }}
-                            >
-                              RANGE
-                            </span>
-                          ) : null}
-                        </div>
-                        <div
-                          style={{
-                            flex: 1,
-                            padding: "2px 12px",
-                            whiteSpace: "nowrap",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                          }}
-                        >
-                          {cleanVerse}
-                        </div>
-                        <div
-                          style={{
-                            width: "85px",
-                            padding: "2px 8px",
-                            flexShrink: 0,
-                            display: "flex",
-                            justifyContent: "flex-end",
-                          }}
-                        >
-                          <button
-                            onClick={(e) =>
-                              handleAddScriptureToSchedule(
-                                verseRef,
-                                cleanVerse,
-                                selectedVersion,
-                                e,
-                              )
-                            }
-                            title={`Add ${verseRef} to schedule`}
-                            style={{
-                              padding: "2px 6px",
-                              borderRadius: "4px",
-                              background: "rgba(56, 189, 248, 0.12)",
-                              border: "1px solid rgba(56, 189, 248, 0.3)",
-                              color: "#38bdf8",
-                              fontSize: "10px",
-                              fontWeight: 700,
-                              cursor: "pointer",
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "3px",
-                              transition: "all 0.12s ease",
-                            }}
-                          >
-                            <Plus size={10} />
-                            <span>Schedule</span>
-                          </button>
-                        </div>
-                      </div>
+                    setLiveFeedback(true);
+                    setTimeout(() => setLiveFeedback(false), 2000);
+                  } else {
+                    setActiveVerseRange(null);
+                    const refStr = `${verseRef} (${selectedVersion})`;
+                    const slides = [`${refStr}\n\n${cleanVerse}`];
+                    setPreviewItem({
+                      id: `verse-${v.verse}-${Date.now()}`,
+                      title: refStr,
+                      category: "scripture",
+                      lines: slides,
+                      cur: 0,
+                    });
+                    onSetLines(
+                      refStr,
+                      selectedVersion,
+                      slides,
+                      "scripture"
                     );
-                  })
-                ) : (
-                  <div
-                    style={{
-                      padding: "40px",
-                      textAlign: "center",
-                      color: "#64748b",
-                      fontSize: "13px",
-                    }}
-                  >
-                    {loading ? (
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          gap: "8px",
-                        }}
-                      >
-                        <Loader2
-                          size={16}
-                          className="animate-spin"
-                          color="#38bdf8"
-                        />
-                        <span>Searching scriptures...</span>
-                      </div>
-                    ) : (
-                      searchError || "No scriptures found."
-                    )}
-                  </div>
-                )}
-              </div>
+                    onJumpTo(0);
+                    if (state.liveState.isClearText) {
+                      onUpdateLiveState({ isClearText: false });
+                    }
+                    setLiveFeedback(true);
+                    setTimeout(() => setLiveFeedback(false), 2000);
+                  }
+                }}
+                onAddToSchedule={handleAddScriptureToSchedule}
+              />
 
               {/* Table Footer: References Count Status */}
               <div
