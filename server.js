@@ -1495,7 +1495,10 @@ const server = http.createServer((req, res) => {
 
     const vMatch = cleanRef.match(versionRegex);
     if (vMatch) {
-      version = vMatch[1].toUpperCase();
+      // If version parameter was not explicitly provided in the URL query, use the version detected from the search text
+      if (!parsedUrl.searchParams.has("version")) {
+        version = vMatch[1].toUpperCase();
+      }
       cleanRef = cleanRef.replace(versionRegex, "").trim();
     }
 

@@ -967,6 +967,11 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     // Strip trailing dashes or colons if user pressed Enter on an incomplete range (e.g. "John 3:16-", "John 3:")
     raw = raw.replace(/[-–—:\s]+$/, "").trim();
 
+    // Strip trailing Bible version code (e.g. "John 3:16 KJV" -> "John 3:16")
+    const versionCodes = AVAILABLE_BIBLE_VERSIONS.map((v) => v.id);
+    const versionRegex = new RegExp(`[\\s,\\(-]+(${versionCodes.join("|")})[\\)\\s]*$`, "i");
+    raw = raw.replace(versionRegex, "").trim();
+
     // Normalize spaced verse: e.g. "John 3 16" -> "John 3:16"
     raw = raw.replace(
       /^([1-3]?\s*[a-zA-Z\s]+?)\s+(\d+)\s+(\d+)(.*)$/,
@@ -999,9 +1004,20 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     setLoading(true);
     setSearchError(null);
 
+    // If raw has a single verse (e.g. "John 3:16" without a range), query the entire chapter so the verse list and slide deck contain all verses of the chapter
+    const singleVerseMatch = raw.match(/^([1-3]?\s*[a-zA-Z\s]+?\s*\d+)[:\s]+(\d+)$/);
+    let apiQuery = raw;
+    let effectiveFocusVerse = focusVerseNum;
+    if (singleVerseMatch) {
+      apiQuery = singleVerseMatch[1].trim();
+      if (effectiveFocusVerse === null) {
+        effectiveFocusVerse = parseInt(singleVerseMatch[2], 10);
+      }
+    }
+
     try {
       const apiBase = import.meta.env.VITE_API_URL || "";
-      const url = `${apiBase}/api/scripture/search?q=${encodeURIComponent(raw)}&version=${encodeURIComponent(version)}`;
+      const url = `${apiBase}/api/scripture/search?q=${encodeURIComponent(apiQuery)}&version=${encodeURIComponent(version)}`;
       const res = await fetch(url);
       const data = await res.json();
 
@@ -1015,7 +1031,10 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
         // Resolve effective verse number (either passed explicitly or parsed from reference query)
         const verseMatch = raw.match(/[:\s](\d+)(?:[-–—]\d+)?$/);
         const effectiveVerseNum =
-          focusVerseNum ?? (verseMatch ? parseInt(verseMatch[1], 10) : null);
+          effectiveFocusVerse ?? (verseMatch ? parseInt(verseMatch[1], 10) : null);
+        if (effectiveVerseNum !== null) {
+          setSelectedVerseNumber(effectiveVerseNum);
+        }
 
         // Calculate target slide index if focusing on a verse
         let targetSlideIdx = 0;
@@ -3278,14 +3297,42 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                 onChange={(e) => {
                   const newVer = e.target.value;
                   setSelectedVersion(newVer);
-                  const isScriptureLive = state.category === "scripture";
-                  const targetQuery =
-                    scriptureResult?.reference || searchQuery.trim();
+
+                  let targetQuery = "";
+                  if (scriptureResult?.reference) {
+                    const baseBookChapter =
+                      scriptureResult.reference.match(/^([1-3]?\s*[a-zA-Z\s]+?\s*\d+)/)?.[1]?.trim() ||
+                      scriptureResult.reference;
+                    targetQuery = selectedVerseNumber
+                      ? `${baseBookChapter}:${selectedVerseNumber}`
+                      : baseBookChapter;
+                  } else {
+                    targetQuery = searchQuery.trim();
+                  }
+
+                  const versionCodes = AVAILABLE_BIBLE_VERSIONS.map((v) => v.id);
+                  const versionRegex = new RegExp(`[\\s,\\(-]+(${versionCodes.join("|")})[\\)\\s]*$`, "i");
+                  targetQuery = targetQuery.replace(versionRegex, "").trim();
+
+                  if (targetQuery) {
+                    setSearchQuery(targetQuery);
+                  }
+
                   const currentVerseNum =
+                    selectedVerseNumber ??
                     scriptureResult?.verses?.[selectedSlideIndex]?.verse ??
                     null;
+
+                  const isCurrentScriptureLive =
+                    state.category === "scripture" &&
+                    Boolean(state.title) &&
+                    Boolean(targetQuery) &&
+                    state.title.toLowerCase().includes(
+                      targetQuery.split(/[:\s]/)[0].toLowerCase()
+                    );
+
                   if (targetQuery) {
-                    fetchScripture(targetQuery, newVer, isScriptureLive, currentVerseNum);
+                    fetchScripture(targetQuery, newVer, isCurrentScriptureLive, currentVerseNum);
                   }
                 }}
                 style={{
@@ -5633,11 +5680,13 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
           {/* 16:9 Mini Screen Monitor reproducing DisplayView */}
           {(() => {
             const activeLiveLine =
-              state.lines[state.cur] ||
-              (activeTab === "lyrics"
-                ? lyricSlides[selectedLyricSlideIndex]
-                : generatedSlides[selectedSlideIndex]) ||
-              "";
+              activeTab === "scripture" && state.category !== "scripture"
+                ? (generatedSlides[selectedSlideIndex] || state.lines[state.cur] || "")
+                : (state.lines[state.cur] ||
+                   (activeTab === "lyrics"
+                     ? lyricSlides[selectedLyricSlideIndex]
+                     : generatedSlides[selectedSlideIndex]) ||
+                   "");
             const activeLiveSlidePayload = parseSlidePayload(activeLiveLine);
             const isLiveMedia = activeLiveSlidePayload?.kind === "media";
             const isLiveCoverMedia = isLiveMedia && activeLiveSlidePayload?.fitMode === "cover";
@@ -5818,11 +5867,14 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
                   }}
                 >
                   {(() => {
-                    const rawLine = state.lines[state.cur] ||
-                      (activeTab === "lyrics"
-                        ? lyricSlides[selectedLyricSlideIndex]
-                        : generatedSlides[selectedSlideIndex]) ||
-                      "No content active";
+                    const rawLine =
+                      activeTab === "scripture" && state.category !== "scripture"
+                        ? (generatedSlides[selectedSlideIndex] || state.lines[state.cur] || "No content active")
+                        : (state.lines[state.cur] ||
+                           (activeTab === "lyrics"
+                             ? lyricSlides[selectedLyricSlideIndex]
+                             : generatedSlides[selectedSlideIndex]) ||
+                           "No content active");
                     
                     const slidePayload = parseSlidePayload(rawLine);
                     if (slidePayload?.kind === 'media') {

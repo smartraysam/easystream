@@ -564,16 +564,22 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
     if (!raw) return;
 
     // Detect embedded Bible version e.g. "John 3:6-10 KJV" or "Romans 8:28-39 NIV"
-    let cleanRef = raw;
-    let effectiveVersion = version;
-    const versionMatch = cleanRef.match(
-      /\b(KJV|NIV|ESV|NKJV|NLT|NASB|CSB|AMP|MSG|CEB|BSB|WEB|ASV|DARBY|DRA|TPT|GNT|YLT)\b/i
+    const versionCodes = AVAILABLE_BIBLE_VERSIONS.map((v) => v.id);
+    const versionRegex = new RegExp(
+      `\\b(${versionCodes.join("|")})\\b`,
+      "i"
     );
+    let cleanRef = raw;
+    let effectiveVersion = (version || selectedVersion || "KJV").toUpperCase();
+    const versionMatch = cleanRef.match(versionRegex);
     if (versionMatch) {
-      effectiveVersion = versionMatch[1].toUpperCase();
-      setSelectedVersion(effectiveVersion);
-      cleanRef = cleanRef.replace(new RegExp(`\\b${versionMatch[1]}\\b`, 'i'), '').trim();
+      // If version was not explicitly provided as an argument, use the embedded one
+      if (!version) {
+        effectiveVersion = versionMatch[1].toUpperCase();
+      }
+      cleanRef = cleanRef.replace(versionRegex, "").trim();
     }
+    setSelectedVersion(effectiveVersion);
 
     // Match range or single verse: e.g. "John 3:6-10", "John 3: 6-10", "John 3:6 - 10", "John 3:16", "Romans 8:28-39", "Psalm 23:1-6"
     const rangeMatch = cleanRef.match(
@@ -4502,32 +4508,47 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
                       key={v.id}
                       onClick={() => {
                         setSelectedVersion(v.id);
-                        const isScriptureLive = state.category === "scripture";
-                        let targetQuery = searchQuery.trim();
-                        if (!targetQuery && scriptureResult?.reference) {
+
+                        let targetQuery = "";
+                        if (activeVerseRange) {
+                          targetQuery = `${activeVerseRange.bookChapter}:${activeVerseRange.start}-${activeVerseRange.end}`;
+                        } else if (scriptureResult?.reference) {
                           const baseBookChapter =
                             scriptureResult.reference.match(/^([1-3]?\s*[a-zA-Z\s]+?\s*\d+)/)?.[1]?.trim() ||
                             scriptureResult.reference;
                           targetQuery = selectedVerseNumber
                             ? `${baseBookChapter}:${selectedVerseNumber}`
                             : baseBookChapter;
-                        } else if (
-                          scriptureResult?.reference &&
-                          selectedVerseNumber &&
-                          !targetQuery.includes("-")
-                        ) {
-                          const baseBookChapter =
-                            scriptureResult.reference.match(/^([1-3]?\s*[a-zA-Z\s]+?\s*\d+)/)?.[1]?.trim() ||
-                            scriptureResult.reference;
-                          targetQuery = `${baseBookChapter}:${selectedVerseNumber}`;
+                        } else if (previewItem?.category === "scripture" && previewItem.title) {
+                          targetQuery = previewItem.title.replace(/\s*\([A-Z0-9\s]+\)\s*$/i, "").trim();
+                        } else {
+                          targetQuery = searchQuery.trim();
                         }
 
+                        // Strip any existing version codes from targetQuery
+                        const vCodes = AVAILABLE_BIBLE_VERSIONS.map((ver) => ver.id);
+                        const vReg = new RegExp(`[\\s,\\(-]+(${vCodes.join("|")})[\\)\\s]*$`, "i");
+                        targetQuery = targetQuery.replace(vReg, "").trim();
+
+                        if (targetQuery) {
+                          setSearchQuery(targetQuery);
+                        }
+
+                        // Only go live automatically if this scripture passage is currently live on display
+                        const isCurrentScriptureLive =
+                          state.category === "scripture" &&
+                          Boolean(state.title) &&
+                          Boolean(targetQuery) &&
+                          state.title.toLowerCase().includes(
+                            targetQuery.split(/[:\s]/)[0].toLowerCase()
+                          );
+
                         fetchScriptureData(
-                          targetQuery || searchQuery,
+                          targetQuery || searchQuery || "John 3:16",
                           v.id,
                           selectedVerseNumber,
                           true,
-                          isScriptureLive,
+                          isCurrentScriptureLive,
                         );
                       }}
                       style={{
