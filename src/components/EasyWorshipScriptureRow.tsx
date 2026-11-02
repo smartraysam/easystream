@@ -196,6 +196,14 @@ export const EasyWorshipScriptureRow: React.FC<EasyWorshipScriptureRowProps> = (
     }
   };
 
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    if(onGoLiveVerse){
+      onGoLiveVerse(verse, verseRef,cleanVerse, isInRange);
+    }else if (onDoubleClickVerse){
+      onDoubleClickVerse(verse, verseRef, cleanVerse,isInRange);
+    }
+  }
+
   return (
     <div
       id={`scripture-row-verse-${verse.verse}`}
@@ -206,6 +214,7 @@ export const EasyWorshipScriptureRow: React.FC<EasyWorshipScriptureRowProps> = (
       data-in-range={isInRange ? "true" : "false"}
       title="Click control to preview"
       onClick={handleSingleClick}
+      onDoubleClick={handleDoubleClick}
       style={{
         display: "flex",
         alignItems: "center",
