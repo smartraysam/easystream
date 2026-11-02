@@ -1,36 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
-  Search,
-  BookOpen,
-  Play,
-  Pause,
-  RotateCcw,
-  Tv,
-  ExternalLink,
-  ChevronLeft,
-  ChevronRight,
-  Radio,
-  CheckCheck,
-  AlertTriangle,
-  RefreshCw,
-  Type,
-  Minus,
-  Plus,
-  Sliders,
-  Settings,
-  X,
-  Check,
-  Music,
-  Globe,
-  HardDrive,
-  ListPlus,
-  Sparkles,
-  Loader2,
-  Bookmark,
-  Edit,
-  Trash2,
-} from "lucide-react";
-import {
   AppState,
   LiveState,
   TimerState,
@@ -48,152 +17,49 @@ import {
   AVAILABLE_BIBLE_VERSIONS,
 } from "../data/bibleBooks";
 import { parseLyricsToSlides } from "../utils/lyricParser";
-import { getSlideReadableText, parseSlidePayload } from "../utils/mediaPresentationParser";
 import {
   getLyricSuggestions,
   LyricSuggestion,
-  POPULAR_WORSHIP_SONGS,
 } from "../data/popularWorshipSongs";
 import { SongBankEditorModal, SongBankEditorItem } from "./SongBankEditorModal";
 import { FormatSettingsModal } from "./FormatSettingsModal";
 import { EasyWorshipWorkspace } from "./EasyWorshipWorkspace";
-import { ThemeBackgroundLayer } from "./ThemeBackgroundLayer";
 
-export interface OnlineSongResult {
-  id: string;
-  trackName: string;
-  artistName: string;
-  albumName?: string;
-  duration?: number;
-  snippet?: string;
-  plainLyrics: string;
-  isLocal?: boolean;
-  localItem?: LibraryItem;
-  source?: 'google' | 'genius' | 'lrclib' | 'local';
-  sourceUrl?: string;
-  artworkUrl?: string;
-}
+// Subcomponents
+import {
+  OnlineSongResult,
+  OnlineScriptureVerse,
+  OnlineScriptureResult,
+  DEFAULT_WORSHIP_SONG,
+  POPULAR_SCRIPTURES,
+  TIMER_PRESETS,
+  FONT_FAMILIES,
+} from "./v2/types";
+import { V2Header } from "./v2/V2Header";
+import { V2CountdownBar } from "./v2/V2CountdownBar";
+import { V2ModeTabs } from "./v2/V2ModeTabs";
+import { V2LyricsSearchBar } from "./v2/V2LyricsSearchBar";
+import { V2ScriptureSearchBar } from "./v2/V2ScriptureSearchBar";
+import { V2LyricsLibraryPanel } from "./v2/V2LyricsLibraryPanel";
+import { V2LyricsSlideDeck } from "./v2/V2LyricsSlideDeck";
+import { V2ScriptureNavigator } from "./v2/V2ScriptureNavigator";
+import { V2ScriptureSlideDeck } from "./v2/V2ScriptureSlideDeck";
+import { V2PreviewMonitor } from "./v2/V2PreviewMonitor";
 
-export const DEFAULT_WORSHIP_SONG: OnlineSongResult = {
-  id: "default-worship-song-1",
-  trackName: "Goodness of God",
-  artistName: "Bethel Music / Jenn Johnson",
-  snippet:
-    "I love You Lord, for Your mercy never fails me • All my days I've been held in Your hands",
-  plainLyrics: `[Verse 1]
-I love You, Lord
-For Your mercy never fails me
-All my days, I've been held in Your hands
-From the moment that I wake up
-Until I lay my head
-Oh, I will sing of the goodness of God
-
-[Chorus]
-And all my life You have been faithful
-And all my life You have been so, so good
-With every breath that I am able
-Oh, I will sing of the goodness of God
-
-[Verse 2]
-I love Your voice
-You have led me through the fire
-In the darkest night You are close like no other
-I've known You as a Father
-I've known You as a Friend
-And I have lived in the goodness of God
-
-[Bridge]
-Your goodness is running after
-It's running after me
-Your goodness is running after
-It's running after me
-With my life laid down, I'm surrendered now
-I give You everything
-Your goodness is running after
-It's running after me`,
-  isLocal: false,
+// Re-export types & constants for external consumers (e.g. EasyWorshipWorkspace, App.tsx)
+export type {
+  OnlineSongResult,
+  OnlineScriptureVerse,
+  OnlineScriptureResult,
+};
+export {
+  DEFAULT_WORSHIP_SONG,
+  POPULAR_SCRIPTURES,
+  TIMER_PRESETS,
+  FONT_FAMILIES,
 };
 
-interface OnlineScriptureVerse {
-  verse: number;
-  text: string;
-}
-
-interface OnlineScriptureResult {
-  reference: string;
-  version: string;
-  versionName: string;
-  verses: OnlineScriptureVerse[];
-  plainContent: string;
-  totalVerses: number;
-  source?: "local" | "online" | "offline-fail";
-}
-
-const POPULAR_SCRIPTURES = [
-  { label: "John 3:16", query: "John 3:16" },
-  { label: "Psalm 23", query: "Psalm 23" },
-  { label: "Romans 8:28", query: "Romans 8:28" },
-  { label: "Philippians 4:6", query: "Philippians 4:6" },
-  { label: "1 Cor 13:4", query: "1 Cor 13:4" },
-  { label: "Isaiah 40:31", query: "Isaiah 40:31" },
-  { label: "Proverbs 3:5", query: "Proverbs 3:5" },
-  { label: "Matthew 28:19", query: "Matthew 28:19" },
-  { label: "Hebrews 11:1", query: "Hebrews 11:1" },
-  { label: "Jeremiah 29:11", query: "Jeremiah 29:11" },
-];
-
-const TIMER_PRESETS = [
-  { label: "1m", sec: 60 },
-  { label: "3m", sec: 180 },
-  { label: "5m", sec: 300 },
-  { label: "10m", sec: 600 },
-  { label: "15m", sec: 900 },
-  { label: "20m", sec: 1200 },
-  { label: "30m", sec: 1800 },
-  { label: "45m", sec: 2700 },
-  { label: "60m", sec: 3600 },
-];
-
-export const FONT_FAMILIES = [
-  {
-    label: "Montserrat",
-    sublabel: "Modern Bold Sans",
-    value: "Montserrat, sans-serif",
-  },
-  {
-    label: "Outfit",
-    sublabel: "Clean Geometric Sans",
-    value: "Outfit, sans-serif",
-  },
-  {
-    label: "Inter",
-    sublabel: "Crisp Display Sans",
-    value: "Inter, sans-serif",
-  },
-  {
-    label: "Playfair Display",
-    sublabel: "Classic Editorial Serif",
-    value: "Playfair Display, serif",
-  },
-  {
-    label: "Cinzel",
-    sublabel: "Majestic Traditional Serif",
-    value: "Cinzel, serif",
-  },
-  {
-    label: "Oswald",
-    sublabel: "Tall Condensed Impact",
-    value: "Oswald, sans-serif",
-  },
-  { label: "Georgia", sublabel: "Warm Reading Serif", value: "Georgia, serif" },
-  {
-    label: "JetBrains Mono",
-    sublabel: "Clean Modern Monospace",
-    value: "JetBrains Mono, monospace",
-  },
-];
-
-interface V2PresenterProps {
+export interface V2PresenterProps {
   state: AppState;
   sessionId: string;
   isConnected: boolean;
@@ -239,7 +105,6 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
   onUpdateSchedule,
   onRemoveFromSchedule,
 }) => {
-
   // -------------------------------------------------------------
   // Workspace Layout State: 'easyworship' | 'quickdeck' | 'classic'
   // -------------------------------------------------------------
@@ -259,7 +124,9 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
   // Typography & Styling Modal State
   // -------------------------------------------------------------
   const [showTypographyModal, setShowTypographyModal] = useState(false);
-  const [formatModalTab, setFormatModalTab] = useState<'scripture' | 'lyrics' | 'layout' | 'general'>('scripture');
+  const [formatModalTab, setFormatModalTab] = useState<
+    "scripture" | "lyrics" | "layout" | "general"
+  >("scripture");
 
   // -------------------------------------------------------------
   // Lyric Projection & Search State (Local + Online)
@@ -318,7 +185,7 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
   const hasScriptureFocusedRef = useRef(false);
 
   // -------------------------------------------------------------
-  // EasyWorship 3-Panel State: Books | Chapters | Verses
+  // Bible Selector Columns State (Panels 1, 2, 3)
   // -------------------------------------------------------------
   const [testamentFilter, setTestamentFilter] = useState<"ALL" | "OT" | "NT">(
     "ALL",
@@ -333,7 +200,7 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
   );
 
   // -------------------------------------------------------------
-  // Countdown Timer State
+  // Countdown Timer & Alerts Bar State
   // -------------------------------------------------------------
   const [customTimerMinutes, setCustomTimerMinutes] = useState("15");
   const [customTimerSeconds, setCustomTimerSeconds] = useState("00");
@@ -374,49 +241,55 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
   // -------------------------------------------------------------
   // Lyric Search, Suggestions & Local Library Matching
   // -------------------------------------------------------------
-  // 1. Matches from local church library
   const localSongMatches: OnlineSongResult[] = useMemo(() => {
     const q = lyricsQuery.trim().toLowerCase();
     const items = state.library || [];
     const songItems = items.filter(
-      (item) =>
-        item.category === "song" ||
-        item.category === "hymn" ||
-        item.category === "custom",
+      (item) => item.category === "song" || (!item.category && item.lines?.length),
     );
 
     if (!q) {
-      return songItems.map((item) => ({
-        id: item.id,
-        trackName: item.title,
-        artistName: item.author || "Local Church Library",
-        snippet: item.lines?.slice(0, 2).join(" • ") || "",
-        plainLyrics: item.content || item.lines?.join("\n") || "",
-        isLocal: true,
-        localItem: item,
-      }));
+      return songItems.map((item) => {
+        const plain =
+          item.content ||
+          (item.lines ? item.lines.join("\n") : "");
+        const lines = plain.split("\n").filter((l) => l.trim().length > 0);
+        return {
+          id: item.id,
+          trackName: item.title,
+          artistName: item.author || "Local Church Library",
+          snippet: lines.slice(0, 2).join(" • "),
+          plainLyrics: plain,
+          isLocal: true,
+          localItem: item,
+        };
+      });
     }
 
     return songItems
       .filter((item) => {
-        return (
-          item.title.toLowerCase().includes(q) ||
-          (item.author && item.author.toLowerCase().includes(q)) ||
-          (item.content && item.content.toLowerCase().includes(q))
-        );
+        const titleMatch = item.title.toLowerCase().includes(q);
+        const authorMatch = (item.author || "").toLowerCase().includes(q);
+        const contentMatch = (item.content || "").toLowerCase().includes(q);
+        return titleMatch || authorMatch || contentMatch;
       })
-      .map((item) => ({
-        id: item.id,
-        trackName: item.title,
-        artistName: item.author || "Local Church Library",
-        snippet: item.lines?.slice(0, 2).join(" • ") || "",
-        plainLyrics: item.content || item.lines?.join("\n") || "",
-        isLocal: true,
-        localItem: item,
-      }));
-  }, [state.library, lyricsQuery]);
+      .map((item) => {
+        const plain =
+          item.content ||
+          (item.lines ? item.lines.join("\n") : "");
+        const lines = plain.split("\n").filter((l) => l.trim().length > 0);
+        return {
+          id: item.id,
+          trackName: item.title,
+          artistName: item.author || "Local Church Library",
+          snippet: lines.slice(0, 2).join(" • "),
+          plainLyrics: plain,
+          isLocal: true,
+          localItem: item,
+        };
+      });
+  }, [lyricsQuery, state.library]);
 
-  // 2. Combined song results based on selected scope
   const combinedSongResults: OnlineSongResult[] = useMemo(() => {
     if (lyricsScope === "local") {
       return localSongMatches;
@@ -425,41 +298,28 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
       return onlineSongResults;
     }
     const localTitles = new Set(
-      localSongMatches.map((m) => m.trackName.toLowerCase()),
+      localSongMatches.map((s) => s.trackName.toLowerCase().trim()),
     );
     const filteredOnline = onlineSongResults.filter(
-      (online) => !localTitles.has(online.trackName.toLowerCase()),
+      (s) => !localTitles.has(s.trackName.toLowerCase().trim()),
     );
     return [...localSongMatches, ...filteredOnline];
   }, [lyricsScope, localSongMatches, onlineSongResults]);
 
-  // 3. Autocomplete suggestions for song lyrics
   const lyricSuggestions: LyricSuggestion[] = useMemo(() => {
     if (!lyricsQuery.trim() || !showLyricSuggestions) return [];
-    return getLyricSuggestions(lyricsQuery, state.library || []);
+    return getLyricSuggestions(lyricsQuery, state.library);
   }, [lyricsQuery, showLyricSuggestions, state.library]);
 
-  // 4. Parse selected song lyrics into slides
   const lyricSlides: string[] = useMemo(() => {
     if (!selectedSong || !selectedSong.plainLyrics) return [];
     return parseLyricsToSlides(selectedSong.plainLyrics, lyricsSplitMode);
   }, [selectedSong, lyricsSplitMode]);
 
-  // 5. Debounced online lyrics search
   useEffect(() => {
-    if (activeTab !== "lyrics") return;
-    if (lyricSearchTimeoutRef.current)
-      clearTimeout(lyricSearchTimeoutRef.current);
-
+    if (activeTab !== "lyrics" || lyricsScope === "local") return;
     if (!lyricsQuery.trim()) {
       setOnlineSongResults([]);
-      setLyricsLoading(false);
-      return;
-    }
-
-    if (lyricsScope === "local") {
-      setOnlineSongResults([]);
-      setLyricsLoading(false);
       return;
     }
 
@@ -512,12 +372,11 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     let activeLyrics = song.plainLyrics;
     let activeSong = song;
 
-    // If lyrics are not yet fetched (e.g. lazy loaded), fetch details
     if (!song.plainLyrics || song.plainLyrics.length < 20) {
       try {
         const apiBase = import.meta.env.VITE_API_URL || "";
         const res = await fetch(
-          `${apiBase}/api/lyrics/details?id=${encodeURIComponent(song.id)}&url=${encodeURIComponent(song.sourceUrl || "")}`
+          `${apiBase}/api/lyrics/details?id=${encodeURIComponent(song.id)}&url=${encodeURIComponent(song.sourceUrl || "")}`,
         );
         const data = await res.json();
         if (data.result?.plainLyrics) {
@@ -530,7 +389,7 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
           activeSong = updated;
           setSelectedSong(updated);
           setOnlineSongResults((prev) =>
-            prev.map((s) => (s.id === song.id ? updated : s))
+            prev.map((s) => (s.id === song.id ? updated : s)),
           );
         }
       } catch (err) {
@@ -575,7 +434,6 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     }
   };
 
-  // Check if selected song is saved in local library
   const isSelectedSongSaved = useMemo(() => {
     if (!selectedSong) return false;
     if (selectedSong.isLocal) return true;
@@ -807,7 +665,6 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     setTimeout(() => setLyricSaveFeedback(null), 3000);
   };
 
-  // Close Typography modal on Escape key
   useEffect(() => {
     if (!showTypographyModal) return;
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -819,19 +676,16 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [showTypographyModal]);
 
-  // Compute suggestions as user types
   const suggestions: BibleSuggestion[] = useMemo(() => {
     if (!searchQuery.trim() || !showSuggestions) return [];
     return getBibleSuggestions(searchQuery, selectedVersion);
   }, [searchQuery, showSuggestions, selectedVersion]);
 
-  // Keep ticking for timer countdown calculation
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 500);
     return () => clearInterval(timer);
   }, []);
 
-  // Compute live remaining timer seconds
   let currentTimerSec = state.timerState.remainingSec;
   if (state.timerState.status === "running" && state.timerState.targetEndTime) {
     currentTimerSec = Math.floor((state.timerState.targetEndTime - now) / 1000);
@@ -852,7 +706,6 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
       ? `${isOvertime ? "-" : ""}${pad(timerHours)}:${pad(timerMins)}:${pad(timerSecs)}`
       : `${isOvertime ? "-" : ""}${pad(timerMins)}:${pad(timerSecs)}`;
 
-  // Filter books for Column 1
   const filteredBooks = useMemo(() => {
     return BIBLE_BOOKS.filter((book) => {
       if (testamentFilter === "OT" && book.testament !== "OT") return false;
@@ -869,7 +722,6 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     });
   }, [testamentFilter, bookSearchText]);
 
-  // Helper to set query and focus cursor at end
   const updateQueryAndFocusEnd = (newVal: string) => {
     setSearchQuery(newVal);
     setShowSuggestions(true);
@@ -883,7 +735,6 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     }, 0);
   };
 
-  // Helper to check if query has chapter number
   const hasChapterNumber = (q: string): boolean => {
     const trimmed = q.trim();
     if (!trimmed) return false;
@@ -897,7 +748,6 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     return /\d+/.test(strippedLeadingNum);
   };
 
-  // Format slides from result
   const formatSlidesFromData = (
     res: OnlineScriptureResult,
     mode: "verse" | "double" | "full",
@@ -932,7 +782,6 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
       return slides;
     }
 
-    // Default 'verse': Exactly 1 verse per slide
     return res.verses.map((v) => {
       const cleanVerse = v.text.replace(/^\d+[\s:.]\s*/, "").trim();
       const verseRef =
@@ -943,7 +792,6 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     });
   };
 
-  // Generated slides for the current result
   const generatedSlides = useMemo(() => {
     if (!scriptureResult) return [];
     return formatSlidesFromData(
@@ -953,7 +801,6 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     );
   }, [scriptureResult, splitMode, includeReferenceOnSlide]);
 
-  // Fetch scripture from API
   const fetchScripture = async (
     queryStr: string,
     version: string,
@@ -964,21 +811,17 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     setShowSuggestions(false);
     if (!raw) return;
 
-    // Strip trailing dashes or colons if user pressed Enter on an incomplete range (e.g. "John 3:16-", "John 3:")
     raw = raw.replace(/[-–—:\s]+$/, "").trim();
 
-    // Strip trailing Bible version code (e.g. "John 3:16 KJV" -> "John 3:16")
     const versionCodes = AVAILABLE_BIBLE_VERSIONS.map((v) => v.id);
     const versionRegex = new RegExp(`[\\s,\\(-]+(${versionCodes.join("|")})[\\)\\s]*$`, "i");
     raw = raw.replace(versionRegex, "").trim();
 
-    // Normalize spaced verse: e.g. "John 3 16" -> "John 3:16"
     raw = raw.replace(
       /^([1-3]?\s*[a-zA-Z\s]+?)\s+(\d+)\s+(\d+)(.*)$/,
       "$1 $2:$3$4",
     );
 
-    // Auto expand abbreviated book name if needed
     const refParts = raw.match(/^([1-3]?\s*[a-zA-Z\s]+?)\s*(\d+.*)$/);
     if (refParts) {
       const bookPart = refParts[1].trim();
@@ -1004,7 +847,6 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     setLoading(true);
     setSearchError(null);
 
-    // If raw has a single verse (e.g. "John 3:16" without a range), query the entire chapter so the verse list and slide deck contain all verses of the chapter
     const singleVerseMatch = raw.match(/^([1-3]?\s*[a-zA-Z\s]+?\s*\d+)[:\s]+(\d+)$/);
     let apiQuery = raw;
     let effectiveFocusVerse = focusVerseNum;
@@ -1028,7 +870,6 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
         setScriptureResult(data);
         setSearchError(null);
 
-        // Resolve effective verse number (either passed explicitly or parsed from reference query)
         const verseMatch = raw.match(/[:\s](\d+)(?:[-–—]\d+)?$/);
         const effectiveVerseNum =
           effectiveFocusVerse ?? (verseMatch ? parseInt(verseMatch[1], 10) : null);
@@ -1036,7 +877,6 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
           setSelectedVerseNumber(effectiveVerseNum);
         }
 
-        // Calculate target slide index if focusing on a verse
         let targetSlideIdx = 0;
         if (effectiveVerseNum !== null) {
           const vIdx = data.verses.findIndex(
@@ -1100,12 +940,10 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     }
   };
 
-  // Initial load
   useEffect(() => {
     fetchScripture("John 3:16", selectedVersion, false, 16);
   }, []);
 
-  // Clear scripture search reference and reset chapter and verse
   const handleClearScriptureSearch = () => {
     setSearchQuery("");
     setShowSuggestions(false);
@@ -1116,7 +954,6 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     searchInputRef.current?.focus();
   };
 
-  // Handle suggestion click / selection
   const handleSelectSuggestion = (sug: BibleSuggestion) => {
     if (sug.type === "book") {
       setSelectedChapter(null);
@@ -1134,7 +971,6 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     }
   };
 
-  // When book is clicked in EasyWorship Column 1
   const handleSelectBook = (book: BibleBook) => {
     setSelectedBook(book);
     setSelectedChapter(1);
@@ -1144,7 +980,6 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     fetchScripture(newRef, selectedVersion, false);
   };
 
-  // When chapter is clicked in EasyWorship Column 2
   const handleSelectChapter = (ch: number) => {
     setSelectedChapter(ch);
     setSelectedVerseNumber(null);
@@ -1154,13 +989,11 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     fetchScripture(newRef, selectedVersion, false);
   };
 
-  // When verse is clicked in EasyWorship Column 3
   const handleSelectVerse = (verseNum: number | null) => {
     if (!selectedChapter || !selectedBook) return;
     setSelectedVerseNumber(verseNum);
     const isScriptureLive = state.category === "scripture";
     if (verseNum === null) {
-      // All verses
       const chRef = `${selectedBook.name} ${selectedChapter}`;
       setSearchQuery(chRef);
       fetchScripture(chRef, selectedVersion, isScriptureLive);
@@ -1205,7 +1038,6 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     }
   };
 
-  // Go Live with current slides
   const handleGoLive = (slideIdx?: number) => {
     if (activeTab === "lyrics") {
       if (!selectedSong || lyricSlides.length === 0) return;
@@ -1243,7 +1075,6 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     setTimeout(() => setLiveFeedback(false), 2000);
   };
 
-  // Slide transport navigation
   const handleNextSlide = () => {
     if (activeTab === "lyrics") {
       if (selectedLyricSlideIndex < lyricSlides.length - 1) {
@@ -1304,9 +1135,9 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     lyricSlides,
     selectedSong,
     scriptureResult,
+    activeLayout,
   ]);
 
-  // Open borderless window
   const openBorderlessWindow = (url: string, name: string) => {
     const w = 1280;
     const h = 720;
@@ -1319,7 +1150,6 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
     );
   };
 
-  // Timer Handlers
   const handleStartOrPauseTimer = () => {
     if (state.timerState.status === "running") {
       onPauseTimer();
@@ -1389,708 +1219,54 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
         overflow: "hidden",
       }}
     >
-      {/* ============================================================= */}
-      {/* 1. TOP HEADER: BRANDING, GO LIVE (F5), LOCAL CACHE & STATUS    */}
-      {/* ============================================================= */}
-      <header
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "10px 20px",
-          background: "rgba(15, 23, 42, 0.95)",
-          borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-          flexShrink: 0,
-          zIndex: 30,
-          gap: "14px",
+      {/* 1. TOP HEADER */}
+      <V2Header
+        activeTab={activeTab}
+        isConnected={isConnected}
+        sessionId={sessionId}
+        state={state}
+        liveFeedback={liveFeedback}
+        lyricSaveFeedback={lyricSaveFeedback}
+        showTypographyModal={showTypographyModal}
+        onUpdateLiveState={onUpdateLiveState}
+        onOpenDisplay={() =>
+          openBorderlessWindow("/display", "easypresenter_display")
+        }
+        onOpenSettings={() => {
+          setFormatModalTab(activeTab === "lyrics" ? "lyrics" : "scripture");
+          setShowTypographyModal(true);
         }}
-      >
-        {/* Left: Branding & Session */}
-        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-            <div
-              style={{
-                width: "32px",
-                height: "32px",
-                borderRadius: "8px",
-                background:
-                  activeTab === "lyrics"
-                    ? "linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)"
-                    : "linear-gradient(135deg, #0ea5e9 0%, #3b82f6 100%)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                boxShadow:
-                  activeTab === "lyrics"
-                    ? "0 0 16px rgba(139, 92, 246, 0.4)"
-                    : "0 0 16px rgba(14, 165, 233, 0.4)",
-                transition: "all 0.2s ease",
-              }}
-            >
-              {activeTab === "lyrics" ? (
-                <Music size={18} color="#ffffff" />
-              ) : (
-                <BookOpen size={18} color="#ffffff" />
-              )}
-            </div>
-            <div>
-              <div
-                style={{
-                  fontSize: "15px",
-                  fontWeight: 900,
-                  letterSpacing: "-0.02em",
-                  color: "#ffffff",
-                }}
-              >
-                EasyStream{" "}
-                <span
-                  style={{
-                    color: activeTab === "lyrics" ? "#a78bfa" : "#38bdf8",
-                  }}
-                >
-                  V2
-                </span>
-              </div>
-              <div
-                style={{ fontSize: "10px", color: "#94a3b8", fontWeight: 600 }}
-              >
-                {activeTab === "lyrics"
-                  ? "Worship Lyrics Presenter"
-                  : "Scripture & Countdown Presenter"}
-              </div>
-            </div>
-          </div>
+      />
 
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              padding: "3px 10px",
-              background: "rgba(255, 255, 255, 0.04)",
-              borderRadius: "999px",
-              border: "1px solid rgba(255, 255, 255, 0.08)",
-              fontSize: "11px",
-              color: "#94a3b8",
-            }}
-          >
-            <span
-              style={{
-                width: "7px",
-                height: "7px",
-                borderRadius: "50%",
-                background: isConnected ? "#10b981" : "#ef4444",
-                boxShadow: isConnected ? "0 0 8px #10b981" : "none",
-              }}
-            />
-            <span>
-              Session: <strong>{sessionId}</strong>
-            </span>
-          </div>
-        </div>
+      {/* 2. DEDICATED COUNTDOWN TIMER CONTROL BAR */}
+      <V2CountdownBar
+        state={state}
+        currentTimerSec={currentTimerSec}
+        formattedCountdown={formattedCountdown}
+        isOvertime={isOvertime}
+        isWarning={isWarning}
+        isCritical={isCritical}
+        onStartOrPauseTimer={handleStartOrPauseTimer}
+        onResetTimer={onResetTimer}
+        adjustTimer={adjustTimer}
+        setTimerConfig={setTimerConfig}
+        customTimerMinutes={customTimerMinutes}
+        setCustomTimerMinutes={setCustomTimerMinutes}
+        customTimerSeconds={customTimerSeconds}
+        setCustomTimerSeconds={setCustomTimerSeconds}
+        timerTitleInput={timerTitleInput}
+        setTimerTitleInput={setTimerTitleInput}
+        onApplyCustomTimer={handleApplyCustomTimer}
+        onSelectPreset={handleSelectPreset}
+        toggleShowOnDisplay={toggleShowOnDisplay}
+        quickAlertInput={quickAlertInput}
+        setQuickAlertInput={setQuickAlertInput}
+        isAlertActive={isAlertActive}
+        onSendPromptMessage={handleSendPromptMessage}
+        onClearPromptMessage={handleClearPromptMessage}
+      />
 
-        {/* Right Actions: Display Screen & Studio Switcher */}
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          {liveFeedback && (
-            <span
-              style={{
-                fontSize: "12px",
-                color: "#34d399",
-                display: "flex",
-                alignItems: "center",
-                gap: "4px",
-                fontWeight: 700,
-              }}
-            >
-              <CheckCheck size={16} /> Sent Live!
-            </span>
-          )}
-          {lyricSaveFeedback && (
-            <span
-              style={{
-                fontSize: "12px",
-                color: "#c084fc",
-                display: "flex",
-                alignItems: "center",
-                gap: "4px",
-                fontWeight: 700,
-              }}
-            >
-              <CheckCheck size={16} /> {lyricSaveFeedback}
-            </span>
-          )}
-
-          {/* Clear Text & Blackout Toggles & Typography Settings */}
-          <div style={{ display: "flex", gap: "4px" }}>
-            <button
-              onClick={() =>
-                onUpdateLiveState({ isClearText: !state.liveState.isClearText })
-              }
-              style={{
-                padding: "6px 10px",
-                borderRadius: "6px",
-                background: state.liveState.isClearText
-                  ? "#f59e0b"
-                  : "rgba(255, 255, 255, 0.06)",
-                color: state.liveState.isClearText ? "#000000" : "#cbd5e1",
-                border: "1px solid rgba(255, 255, 255, 0.1)",
-                fontSize: "11px",
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-              title="Clear scripture text from display (keeps background)"
-            >
-              Clear Text
-            </button>
-            <button
-              onClick={() =>
-                onUpdateLiveState({ isBlackout: !state.liveState.isBlackout })
-              }
-              style={{
-                padding: "6px 10px",
-                borderRadius: "6px",
-                background: state.liveState.isBlackout
-                  ? "#ef4444"
-                  : "rgba(255, 255, 255, 0.06)",
-                color: "#ffffff",
-                border: "1px solid rgba(255, 255, 255, 0.1)",
-                fontSize: "11px",
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-              title="Blackout entire display screen"
-            >
-              Blackout
-            </button>
-          </div>
-
-          {/* Quick Display Screen Launcher */}
-          <button
-            onClick={() =>
-              openBorderlessWindow("/display", "easypresenter_display")
-            }
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              fontSize: "12px",
-              padding: "6px 12px",
-              borderRadius: "8px",
-              background: "rgba(56, 189, 248, 0.15)",
-              border: "1px solid rgba(56, 189, 248, 0.4)",
-              color: "#38bdf8",
-              fontWeight: 700,
-              cursor: "pointer",
-              transition: "all 0.2s",
-            }}
-            title="Launch Fullscreen Display Window on Projector"
-          >
-            <Tv size={14} />
-            <span>Display</span>
-            <ExternalLink size={12} style={{ opacity: 0.7 }} />
-          </button>
-
-          {/* Subtle separator */}
-          <div style={{ width: "1px", height: "20px", background: "rgba(255, 255, 255, 0.12)", margin: "0 2px" }} />
-
-          {/* General Settings (Scripture & Lyrics Formatting) Button */}
-          <button
-            id="v2-general-settings-button"
-            onClick={() => {
-              setFormatModalTab(activeTab === 'lyrics' ? 'lyrics' : 'scripture');
-              setShowTypographyModal(true);
-            }}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              fontSize: "12px",
-              padding: "6px 12px",
-              borderRadius: "8px",
-              background: showTypographyModal
-                ? "rgba(56, 189, 248, 0.25)"
-                : "rgba(255, 255, 255, 0.08)",
-              border: showTypographyModal
-                ? "1.5px solid #38bdf8"
-                : "1px solid rgba(255, 255, 255, 0.18)",
-              color: showTypographyModal ? "#38bdf8" : "#f1f5f9",
-              fontWeight: 700,
-              cursor: "pointer",
-              transition: "all 0.15s ease",
-              boxShadow: showTypographyModal ? "0 0 12px rgba(56, 189, 248, 0.35)" : "none",
-            }}
-            title="General Settings: Scripture & Lyrics formatting, fonts, colors, and layout"
-            aria-label="General Settings"
-          >
-            <Settings size={14} color="#38bdf8" />
-            <span>Settings</span>
-          </button>
-        </div>
-      </header>
-
-      {/* ============================================================= */}
-      {/* 2. DEDICATED COUNTDOWN TIMER CONTROL BAR                      */}
-      {/* ============================================================= */}
-      <section
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "8px 20px",
-          background: "linear-gradient(90deg, #0b1120 0%, #0f172a 100%)",
-          borderBottom: "1px solid rgba(56, 189, 248, 0.15)",
-          flexShrink: 0,
-          gap: "14px",
-          flexWrap: "wrap",
-        }}
-      >
-        {/* Left: Timer Display & Status */}
-        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-          <div
-            style={{
-              display: "flex",
-              flexDirection: "column",
-              background: "rgba(0, 0, 0, 0.4)",
-              padding: "3px 12px",
-              borderRadius: "8px",
-              border: `1.5px solid ${isOvertime ? "#ef4444" : isCritical ? "#f97316" : isWarning ? "#f59e0b" : "#38bdf8"}`,
-              boxShadow: `0 0 14px ${isOvertime ? "rgba(239, 68, 68, 0.3)" : "rgba(56, 189, 248, 0.2)"}`,
-            }}
-          >
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: "8px",
-              }}
-            >
-              <span
-                style={{
-                  fontSize: "9px",
-                  fontWeight: 800,
-                  color: "#94a3b8",
-                  textTransform: "uppercase",
-                }}
-              >
-                COUNTDOWN
-              </span>
-              <span
-                style={{
-                  fontSize: "9px",
-                  fontWeight: 800,
-                  padding: "1px 5px",
-                  borderRadius: "4px",
-                  background:
-                    state.timerState.status === "running"
-                      ? "rgba(16, 185, 129, 0.2)"
-                      : state.timerState.status === "paused"
-                        ? "rgba(245, 158, 11, 0.2)"
-                        : "rgba(100, 116, 139, 0.2)",
-                  color:
-                    state.timerState.status === "running"
-                      ? "#34d399"
-                      : state.timerState.status === "paused"
-                        ? "#fbbf24"
-                        : "#94a3b8",
-                }}
-              >
-                {state.timerState.status.toUpperCase()}
-              </span>
-            </div>
-            <div
-              style={{
-                fontFamily: "Montserrat, monospace",
-                fontSize: "26px",
-                fontWeight: 900,
-                color: isOvertime
-                  ? "#ef4444"
-                  : isCritical
-                    ? "#f97316"
-                    : isWarning
-                      ? "#f59e0b"
-                      : "#38bdf8",
-                lineHeight: 1.1,
-                letterSpacing: "-0.02em",
-                fontVariantNumeric: "tabular-nums",
-              }}
-            >
-              {formattedCountdown}
-            </div>
-          </div>
-
-          {/* Transport Controls */}
-          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            <button
-              onClick={handleStartOrPauseTimer}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "7px 14px",
-                borderRadius: "8px",
-                background:
-                  state.timerState.status === "running"
-                    ? "linear-gradient(135deg, #f59e0b 0%, #d97706 100%)"
-                    : "linear-gradient(135deg, #10b981 0%, #059669 100%)",
-                color: "#ffffff",
-                fontWeight: 800,
-                fontSize: "12px",
-                border: "none",
-                cursor: "pointer",
-                boxShadow:
-                  state.timerState.status === "running"
-                    ? "0 0 12px rgba(245, 158, 11, 0.4)"
-                    : "0 0 12px rgba(16, 185, 129, 0.4)",
-              }}
-            >
-              {state.timerState.status === "running" ? (
-                <Pause size={14} />
-              ) : (
-                <Play size={14} />
-              )}
-              <span>
-                {state.timerState.status === "running" ? "Pause" : "Start"}
-              </span>
-            </button>
-
-            <button
-              onClick={onResetTimer}
-              style={{
-                padding: "7px 10px",
-                borderRadius: "8px",
-                background: "rgba(255, 255, 255, 0.06)",
-                border: "1px solid rgba(255, 255, 255, 0.12)",
-                color: "#cbd5e1",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "4px",
-                fontSize: "12px",
-                fontWeight: 600,
-              }}
-              title="Reset countdown to duration"
-            >
-              <RotateCcw size={13} />
-              <span>Reset</span>
-            </button>
-
-            {/* +1m, -1m, +5m quick adjustments */}
-            <div style={{ display: "flex", gap: "4px", marginLeft: "4px" }}>
-              <button
-                onClick={() => adjustTimer(-60)}
-                style={{
-                  padding: "5px 8px",
-                  borderRadius: "6px",
-                  background: "rgba(255, 255, 255, 0.05)",
-                  border: "1px solid rgba(255, 255, 255, 0.1)",
-                  color: "#94a3b8",
-                  fontSize: "11px",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-                title="Subtract 1 minute"
-              >
-                -1m
-              </button>
-              <button
-                onClick={() => adjustTimer(60)}
-                style={{
-                  padding: "5px 8px",
-                  borderRadius: "6px",
-                  background: "rgba(255, 255, 255, 0.05)",
-                  border: "1px solid rgba(255, 255, 255, 0.1)",
-                  color: "#94a3b8",
-                  fontSize: "11px",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-                title="Add 1 minute"
-              >
-                +1m
-              </button>
-              <button
-                onClick={() => adjustTimer(300)}
-                style={{
-                  padding: "5px 8px",
-                  borderRadius: "6px",
-                  background: "rgba(255, 255, 255, 0.05)",
-                  border: "1px solid rgba(255, 255, 255, 0.1)",
-                  color: "#94a3b8",
-                  fontSize: "11px",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-                title="Add 5 minutes"
-              >
-                +5m
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Center: Presets & Custom Duration Input */}
-        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-          <span style={{ fontSize: "11px", fontWeight: 700, color: "#64748b" }}>
-            PRESETS:
-          </span>
-          <div style={{ display: "flex", gap: "4px", flexWrap: "wrap" }}>
-            {TIMER_PRESETS.map((p) => (
-              <button
-                key={p.sec}
-                onClick={() => handleSelectPreset(p.sec, p.label)}
-                style={{
-                  padding: "4px 8px",
-                  borderRadius: "6px",
-                  background: "rgba(255, 255, 255, 0.05)",
-                  border: "1px solid rgba(255, 255, 255, 0.1)",
-                  color: "#e2e8f0",
-                  fontSize: "11px",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                }}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Custom MM:SS */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "4px",
-              background: "rgba(0, 0, 0, 0.3)",
-              padding: "3px 8px",
-              borderRadius: "6px",
-              border: "1px solid rgba(255, 255, 255, 0.1)",
-            }}
-          >
-            <input
-              type="number"
-              min="0"
-              max="180"
-              value={customTimerMinutes}
-              onChange={(e) => setCustomTimerMinutes(e.target.value)}
-              style={{
-                width: "36px",
-                background: "transparent",
-                border: "none",
-                color: "#ffffff",
-                fontSize: "12px",
-                fontWeight: 700,
-                textAlign: "center",
-                outline: "none",
-              }}
-              title="Minutes"
-            />
-            <span style={{ color: "#64748b", fontWeight: 800 }}>:</span>
-            <input
-              type="number"
-              min="0"
-              max="59"
-              value={customTimerSeconds}
-              onChange={(e) => setCustomTimerSeconds(e.target.value)}
-              style={{
-                width: "32px",
-                background: "transparent",
-                border: "none",
-                color: "#ffffff",
-                fontSize: "12px",
-                fontWeight: 700,
-                textAlign: "center",
-                outline: "none",
-              }}
-              title="Seconds"
-            />
-            <input
-              type="text"
-              placeholder="Label"
-              value={timerTitleInput}
-              onChange={(e) => setTimerTitleInput(e.target.value)}
-              style={{
-                width: "110px",
-                background: "rgba(0, 0, 0, 0.3)",
-                border: "1px solid rgba(255, 255, 255, 0.1)",
-                borderRadius: "4px",
-                padding: "3px 6px",
-                fontSize: "11px",
-                color: "#ffffff",
-                outline: "none",
-              }}
-              title="Countdown label / slot name"
-            />
-            <button
-              onClick={handleApplyCustomTimer}
-              style={{
-                padding: "3px 8px",
-                borderRadius: "4px",
-                background: "#38bdf8",
-                color: "#000000",
-                fontSize: "11px",
-                fontWeight: 800,
-                border: "none",
-                cursor: "pointer",
-              }}
-            >
-              Set
-            </button>
-          </div>
-        </div>
-
-        {/* Right: Display Sync Toggle, Timer Scale & Prompt Message */}
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          {/* Inline Timer Font Size Control */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "4px",
-              background: "rgba(0, 0, 0, 0.35)",
-              padding: "3px 8px",
-              borderRadius: "6px",
-              border: "1px solid rgba(255, 255, 255, 0.1)",
-            }}
-            title="Scale the countdown timer font size on the live display screen"
-          >
-            <span
-              style={{
-                fontSize: "10px",
-                fontWeight: 800,
-                color: "#94a3b8",
-                textTransform: "uppercase",
-              }}
-            >
-              Size:
-            </span>
-            <button
-              onClick={() => {
-                const cur = state.timerState.fontSizeScale || 100;
-                const next = Math.max(50, cur - 10);
-                setTimerConfig({ fontSizeScale: next });
-              }}
-              style={{
-                width: "20px",
-                height: "20px",
-                borderRadius: "4px",
-                background: "rgba(255, 255, 255, 0.08)",
-                border: "none",
-                color: "#ffffff",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-              title="Decrease timer font size (-10%)"
-            >
-              <Minus size={11} />
-            </button>
-            <span
-              style={{
-                fontSize: "11px",
-                fontWeight: 800,
-                color: "#38bdf8",
-                minWidth: "38px",
-                textAlign: "center",
-                fontVariantNumeric: "tabular-nums",
-              }}
-            >
-              {state.timerState.fontSizeScale || 100}%
-            </span>
-            <button
-              onClick={() => {
-                const cur = state.timerState.fontSizeScale || 100;
-                const next = Math.min(250, cur + 10);
-                setTimerConfig({ fontSizeScale: next });
-              }}
-              style={{
-                width: "20px",
-                height: "20px",
-                borderRadius: "4px",
-                background: "rgba(255, 255, 255, 0.08)",
-                border: "none",
-                color: "#ffffff",
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-              }}
-              title="Increase timer font size (+10%)"
-            >
-              <Plus size={11} />
-            </button>
-          </div>
-
-          <label
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              cursor: "pointer",
-              fontSize: "11px",
-              fontWeight: 700,
-              color: state.timerState.showOnDisplay ? "#38bdf8" : "#94a3b8",
-            }}
-            title="When active, the countdown timer appears on the top of DisplayView screen"
-          >
-            <input
-              type="checkbox"
-              checked={Boolean(state.timerState.showOnDisplay)}
-              onChange={toggleShowOnDisplay}
-              style={{ accentColor: "#38bdf8", cursor: "pointer" }}
-            />
-            <span>Show on Display</span>
-          </label>
-
-          <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-            <input
-              type="text"
-              placeholder="Live prompt (e.g. Wrap up)"
-              value={quickAlertInput}
-              onChange={(e) => setQuickAlertInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleSendPromptMessage();
-              }}
-              style={{
-                width: "150px",
-                background: "rgba(0, 0, 0, 0.4)",
-                border: "1px solid rgba(255, 255, 255, 0.1)",
-                borderRadius: "6px",
-                padding: "4px 8px",
-                fontSize: "11px",
-                color: "#ffffff",
-                outline: "none",
-              }}
-            />
-            <button
-              onClick={
-                isAlertActive
-                  ? handleClearPromptMessage
-                  : handleSendPromptMessage
-              }
-              style={{
-                padding: "4px 8px",
-                borderRadius: "6px",
-                background: isAlertActive
-                  ? "#ef4444"
-                  : "rgba(255, 255, 255, 0.08)",
-                color: "#ffffff",
-                border: "none",
-                fontSize: "11px",
-                fontWeight: 700,
-                cursor: "pointer",
-              }}
-            >
-              {isAlertActive ? "Clear" : "Send"}
-            </button>
-          </div>
-        </div>
-      </section>
-
-      {/* ============================================================= */}
-      {/* 3. PROJECTION WORKSPACE (SWITCHABLE: EASYWORSHIP VS QUICK DECK)*/}
-      {/* ============================================================= */}
+      {/* 3. PROJECTION WORKSPACE (SWITCHABLE: EASYWORSHIP VS QUICK DECK) */}
       {activeLayout === "easyworship" ? (
         <EasyWorshipWorkspace
           state={state}
@@ -2117,4068 +1293,194 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
         />
       ) : (
         <>
-      {/* ============================================================= */}
-      {/* 2.5. PROJECTION MODE TABS (UNDER TIME CONTROL SECTION)        */}
-      {/* ============================================================= */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          padding: "8px 20px",
-          background: "linear-gradient(90deg, #0a0f1d 0%, #0d1527 100%)",
-          borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-          flexShrink: 0,
-          gap: "12px",
-        }}
-      >
-        <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-          {/* Segmented Pill Tabs */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              background: "rgba(0, 0, 0, 0.55)",
-              padding: "3px",
-              borderRadius: "10px",
-              border: "1px solid rgba(255, 255, 255, 0.1)",
-              gap: "4px",
-            }}
-          >
-            <button
-              onClick={() => setActiveTab("scripture")}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                padding: "7px 18px",
-                borderRadius: "7px",
-                background:
-                  activeTab === "scripture"
-                    ? "linear-gradient(135deg, #0ea5e9 0%, #0284c7 100%)"
-                    : "transparent",
-                color: activeTab === "scripture" ? "#ffffff" : "#94a3b8",
-                fontWeight: 800,
-                fontSize: "13px",
-                border: "none",
-                cursor: "pointer",
-                boxShadow:
-                  activeTab === "scripture"
-                    ? "0 0 16px rgba(14, 165, 233, 0.45)"
-                    : "none",
-                transition: "all 0.15s ease",
-              }}
-              title="Switch to Scripture Presentation mode (Bible books, chapters, verses)"
-            >
-              <BookOpen size={15} />
-              <span>Scripture Projection</span>
-            </button>
+          {/* Mode Switcher Tabs */}
+          <V2ModeTabs activeTab={activeTab} setActiveTab={setActiveTab} />
 
-            <button
-              onClick={() => setActiveTab("lyrics")}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-                padding: "7px 18px",
-                borderRadius: "7px",
-                background:
-                  activeTab === "lyrics"
-                    ? "linear-gradient(135deg, #8b5cf6 0%, #6d28d9 100%)"
-                    : "transparent",
-                color: activeTab === "lyrics" ? "#ffffff" : "#94a3b8",
-                fontWeight: 800,
-                fontSize: "13px",
-                border: "none",
-                cursor: "pointer",
-                boxShadow:
-                  activeTab === "lyrics"
-                    ? "0 0 16px rgba(139, 92, 246, 0.45)"
-                    : "none",
-                transition: "all 0.15s ease",
+          {/* Search Bar */}
+          {activeTab === "lyrics" ? (
+            <V2LyricsSearchBar
+              lyricsQuery={lyricsQuery}
+              setLyricsQuery={setLyricsQuery}
+              lyricsLoading={lyricsLoading}
+              lyricsScope={lyricsScope}
+              setLyricsScope={setLyricsScope}
+              lyricsSplitMode={lyricsSplitMode}
+              setLyricsSplitMode={setLyricsSplitMode}
+              showLyricSuggestions={showLyricSuggestions}
+              setShowLyricSuggestions={setShowLyricSuggestions}
+              activeLyricIndex={activeLyricIndex}
+              setActiveLyricIndex={setActiveLyricIndex}
+              lyricSuggestions={lyricSuggestions}
+              combinedSongResults={combinedSongResults}
+              localSongMatches={localSongMatches}
+              onlineSongResults={onlineSongResults}
+              selectedSong={selectedSong}
+              lyricSearchInputRef={lyricSearchInputRef}
+              lyricSuggestionsRef={lyricSuggestionsRef}
+              onSelectSong={handleSelectSong}
+              onSelectLyricSuggestion={handleSelectLyricSuggestion}
+              onOpenAddSong={handleOpenAddSong}
+              onDirectSearchSubmit={async (q) => {
+                try {
+                  setLyricsLoading(true);
+                  const apiBase = import.meta.env.VITE_API_URL || "";
+                  const res = await fetch(
+                    `${apiBase}/api/lyrics/search?q=${encodeURIComponent(q)}`,
+                  );
+                  const data = await res.json();
+                  if (data.results && data.results.length > 0) {
+                    setOnlineSongResults(data.results);
+                    handleSelectSong(data.results[0], true);
+                  }
+                } catch (err) {
+                  console.error("Direct search failed:", err);
+                } finally {
+                  setLyricsLoading(false);
+                }
               }}
-              title="Switch to Lyric Presentation mode (Search church local library & online worship songs)"
-            >
-              <Music size={15} />
-              <span>Lyric Projection</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Right Contextual Helper */}
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          {activeTab === "scripture" ? (
-            <span
-              style={{
-                fontSize: "11px",
-                color: "#38bdf8",
-                fontWeight: 600,
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-              }}
-            >
-              <BookOpen size={13} />
-              <span>
-                66 Books • Chapters • Verses • Multi-Version Quick Navigation
-              </span>
-            </span>
+            />
           ) : (
-            <span
-              style={{
-                fontSize: "11px",
-                color: "#c084fc",
-                fontWeight: 600,
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-              }}
-            >
-              <Music size={13} />
-              <span>
-                Church Library • Online LRCLIB Catalog • Smart Stanza Split
-              </span>
-            </span>
+            <V2ScriptureSearchBar
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              selectedVersion={selectedVersion}
+              setSelectedVersion={setSelectedVersion}
+              splitMode={splitMode}
+              setSplitMode={setSplitMode}
+              includeReferenceOnSlide={includeReferenceOnSlide}
+              setIncludeReferenceOnSlide={setIncludeReferenceOnSlide}
+              loading={loading}
+              searchError={searchError}
+              showSuggestions={showSuggestions}
+              setShowSuggestions={setShowSuggestions}
+              activeSuggestionIndex={activeSuggestionIndex}
+              setActiveSuggestionIndex={setActiveSuggestionIndex}
+              suggestions={suggestions}
+              searchInputRef={searchInputRef}
+              suggestionsContainerRef={suggestionsContainerRef}
+              hasScriptureFocusedRef={hasScriptureFocusedRef}
+              scriptureResult={scriptureResult}
+              selectedVerseNumber={selectedVerseNumber}
+              selectedSlideIndex={selectedSlideIndex}
+              state={state}
+              updateQueryAndFocusEnd={updateQueryAndFocusEnd}
+              onClearScriptureSearch={handleClearScriptureSearch}
+              onSelectSuggestion={handleSelectSuggestion}
+              onFetchScripture={fetchScripture}
+              setSelectedChapter={setSelectedChapter}
+              setSelectedVerseNumber={setSelectedVerseNumber}
+              setScriptureResult={setScriptureResult}
+            />
           )}
-        </div>
-      </div>
 
-      {/* ============================================================= */}
-      {/* 3. PROMINENT SEARCH BAR (SCRIPTURE VS LYRICS)                  */}
-      {/* ============================================================= */}
-      {activeTab === "lyrics" ? (
-        <section
-          style={{
-            padding: "12px 20px",
-            background: "rgba(15, 23, 42, 0.85)",
-            borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-            display: "flex",
-            flexDirection: "column",
-            gap: "10px",
-            flexShrink: 0,
-            position: "relative",
-          }}
-        >
-          <div
+          {/* Main 5-Panel Workspace */}
+          <main
             style={{
               display: "flex",
-              alignItems: "center",
-              gap: "12px",
-              position: "relative",
+              flex: 1,
+              overflow: "hidden",
+              background: "#090d16",
             }}
           >
-            {/* Lyric Search Input with Suggestions */}
-            <div style={{ position: "relative", flex: 1 }}>
-              <Search
-                size={18}
-                color="#a78bfa"
-                style={{
-                  position: "absolute",
-                  left: "14px",
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  zIndex: 2,
-                }}
-              />
-              <input
-                ref={lyricSearchInputRef}
-                type="text"
-                value={lyricsQuery}
-                onChange={(e) => {
-                  setLyricsQuery(e.target.value);
-                  setShowLyricSuggestions(true);
-                  setActiveLyricIndex(-1);
-                }}
-                onFocus={() => {
-                  if (lyricsQuery.trim()) setShowLyricSuggestions(true);
-                }}
-                onKeyDown={(e) => {
-                  if (showLyricSuggestions && lyricSuggestions.length > 0) {
-                    if (e.key === "ArrowDown") {
-                      e.preventDefault();
-                      setActiveLyricIndex((prev) =>
-                        prev < lyricSuggestions.length - 1 ? prev + 1 : 0,
-                      );
-                    } else if (e.key === "ArrowUp") {
-                      e.preventDefault();
-                      setActiveLyricIndex((prev) =>
-                        prev > 0 ? prev - 1 : lyricSuggestions.length - 1,
-                      );
-                    } else if (e.key === "Enter") {
-                      e.preventDefault();
-                      setShowLyricSuggestions(false);
-                      if (
-                        activeLyricIndex >= 0 &&
-                        activeLyricIndex < lyricSuggestions.length
-                      ) {
-                        const sug = lyricSuggestions[activeLyricIndex];
-                        if (sug.isLocal && sug.localItem) {
-                          const match: OnlineSongResult = {
-                            id: sug.localItem.id,
-                            trackName: sug.localItem.title,
-                            artistName: sug.localItem.author || "Local Church Library",
-                            snippet: sug.localItem.lines?.slice(0, 2).join(" • ") || "",
-                            plainLyrics: sug.localItem.content || sug.localItem.lines?.join("\n") || "",
-                            isLocal: true,
-                            localItem: sug.localItem,
-                          };
-                          handleSelectSong(match, true);
-                          return;
-                        } else {
-                          setLyricsQuery(sug.title);
-                          (async () => {
-                            try {
-                              setLyricsLoading(true);
-                              const apiBase = import.meta.env.VITE_API_URL || "";
-                              const res = await fetch(`${apiBase}/api/lyrics/search?q=${encodeURIComponent(sug.title)}`);
-                              const data = await res.json();
-                              if (data.results && data.results.length > 0) {
-                                handleSelectSong(data.results[0], true);
-                              }
-                            } catch (err) {
-                              console.error("Enter online lyric search failed:", err);
-                            } finally {
-                              setLyricsLoading(false);
-                            }
-                          })();
-                          return;
-                        }
-                      }
-
-                      if (selectedSong) {
-                        handleSelectSong(selectedSong, true);
-                      } else if (combinedSongResults.length > 0) {
-                        handleSelectSong(combinedSongResults[0], true);
-                      }
-                    } else if (e.key === "Escape") {
-                      setShowLyricSuggestions(false);
-                    }
-                  } else if (e.key === "Enter") {
-                    e.preventDefault();
-                    if (selectedSong) {
-                      handleSelectSong(selectedSong, true);
-                    } else if (combinedSongResults.length > 0) {
-                      handleSelectSong(combinedSongResults[0], true);
-                    } else if (lyricsQuery.trim()) {
-                      const q = lyricsQuery.trim();
-                      (async () => {
-                        try {
-                          setLyricsLoading(true);
-                          const apiBase = import.meta.env.VITE_API_URL || "";
-                          const res = await fetch(`${apiBase}/api/lyrics/search?q=${encodeURIComponent(q)}`);
-                          const data = await res.json();
-                          if (data.results && data.results.length > 0) {
-                            setOnlineSongResults(data.results);
-                            handleSelectSong(data.results[0], true);
-                          }
-                        } catch (err) {
-                          console.error("Direct search on Enter failed:", err);
-                        } finally {
-                          setLyricsLoading(false);
-                        }
-                      })();
-                    }
-                  }
-                }}
-                placeholder="Search worship songs by title, artist, or lyric lines (Local library & online catalog)..."
-                style={{
-                  width: "100%",
-                  padding: "11px 40px 11px 44px",
-                  borderRadius: "10px",
-                  background: "rgba(0, 0, 0, 0.45)",
-                  border: "1.5px solid rgba(139, 92, 246, 0.35)",
-                  boxShadow: "0 0 20px rgba(139, 92, 246, 0.15)",
-                  color: "#ffffff",
-                  fontSize: "15px",
-                  fontWeight: 600,
-                  outline: "none",
-                }}
-              />
-
-              <div
-                style={{
-                  position: "absolute",
-                  right: "12px",
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  zIndex: 2,
-                }}
-              >
-                {lyricsLoading && (
-                  <Loader2 size={16} color="#a78bfa" className="animate-spin" />
-                )}
-                {lyricsQuery && (
-                  <button
-                    onClick={() => {
-                      setLyricsQuery("");
-                      setShowLyricSuggestions(false);
-                    }}
-                    style={{
-                      background: "rgba(255, 255, 255, 0.1)",
-                      border: "none",
-                      borderRadius: "50%",
-                      width: "20px",
-                      height: "20px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "#94a3b8",
-                      cursor: "pointer",
-                    }}
-                    title="Clear query"
-                  >
-                    <X size={12} />
-                  </button>
-                )}
-              </div>
-
-              {/* Autocomplete Dropdown */}
-              {showLyricSuggestions && lyricSuggestions.length > 0 && (
-                <div
-                  ref={lyricSuggestionsRef}
-                  style={{
-                    position: "absolute",
-                    top: "calc(100% + 6px)",
-                    left: 0,
-                    right: 0,
-                    background: "#0b1120",
-                    border: "1px solid rgba(139, 92, 246, 0.35)",
-                    borderRadius: "10px",
-                    boxShadow:
-                      "0 15px 35px rgba(0, 0, 0, 0.8), 0 0 25px rgba(139, 92, 246, 0.2)",
-                    zIndex: 100,
-                    overflow: "hidden",
-                    maxHeight: "320px",
-                    overflowY: "auto",
-                  }}
-                >
-                  <div
-                    style={{
-                      padding: "8px 14px",
-                      fontSize: "10px",
-                      fontWeight: 800,
-                      color: "#94a3b8",
-                      textTransform: "uppercase",
-                      borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-                      display: "flex",
-                      justifyContent: "space-between",
-                      background: "rgba(15, 23, 42, 0.8)",
-                    }}
-                  >
-                    <span>Suggested Songs</span>
-                    <span>Local & Online</span>
-                  </div>
-                  {lyricSuggestions.map((sug, idx) => {
-                    const isActive = idx === activeLyricIndex;
-                    return (
-                      <div
-                        key={`${sug.title}-${idx}`}
-                        onClick={() => handleSelectLyricSuggestion(sug)}
-                        style={{
-                          padding: "10px 14px",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          cursor: "pointer",
-                          background: isActive
-                            ? "rgba(139, 92, 246, 0.2)"
-                            : "transparent",
-                          borderBottom: "1px solid rgba(255, 255, 255, 0.04)",
-                          transition: "background 0.1s",
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "10px",
-                          }}
-                        >
-                          {sug.isLocal ? (
-                            <HardDrive size={15} color="#34d399" />
-                          ) : (
-                            <Globe size={15} color="#a78bfa" />
-                          )}
-                          <div>
-                            <div
-                              style={{
-                                fontSize: "13px",
-                                fontWeight: 700,
-                                color: "#ffffff",
-                              }}
-                            >
-                              {sug.title}
-                            </div>
-                            <div style={{ fontSize: "11px", color: "#94a3b8" }}>
-                              {sug.artist}
-                            </div>
-                          </div>
-                        </div>
-
-                        <span
-                          style={{
-                            fontSize: "10px",
-                            fontWeight: 800,
-                            padding: "2px 8px",
-                            borderRadius: "999px",
-                            background: sug.isLocal
-                              ? "rgba(16, 185, 129, 0.18)"
-                              : "rgba(139, 92, 246, 0.18)",
-                            color: sug.isLocal ? "#34d399" : "#c084fc",
-                            border: sug.isLocal
-                              ? "1px solid rgba(16, 185, 129, 0.35)"
-                              : "1px solid rgba(139, 92, 246, 0.35)",
-                          }}
-                        >
-                          {sug.isLocal ? "Church Library" : "Online"}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Scope Filter Pills: All | Local Library | Online Search */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                background: "rgba(0, 0, 0, 0.45)",
-                padding: "3px",
-                borderRadius: "8px",
-                border: "1px solid rgba(255, 255, 255, 0.1)",
-                gap: "3px",
-              }}
-            >
-              <button
-                onClick={() => setLyricsScope("all")}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: "6px",
-                  background:
-                    lyricsScope === "all"
-                      ? "rgba(139, 92, 246, 0.25)"
-                      : "transparent",
-                  color: lyricsScope === "all" ? "#c084fc" : "#94a3b8",
-                  border:
-                    lyricsScope === "all"
-                      ? "1px solid #8b5cf6"
-                      : "1px solid transparent",
-                  fontSize: "11px",
-                  fontWeight: 800,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px",
-                }}
-              >
-                <span>All ({combinedSongResults.length})</span>
-              </button>
-
-              <button
-                onClick={() => setLyricsScope("local")}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: "6px",
-                  background:
-                    lyricsScope === "local"
-                      ? "rgba(16, 185, 129, 0.25)"
-                      : "transparent",
-                  color: lyricsScope === "local" ? "#34d399" : "#94a3b8",
-                  border:
-                    lyricsScope === "local"
-                      ? "1px solid #10b981"
-                      : "1px solid transparent",
-                  fontSize: "11px",
-                  fontWeight: 800,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px",
-                }}
-                title="Search and browse local church song library only"
-              >
-                <HardDrive size={12} />
-                <span>Local ({localSongMatches.length})</span>
-              </button>
-
-              <button
-                onClick={() => setLyricsScope("online")}
-                style={{
-                  padding: "6px 12px",
-                  borderRadius: "6px",
-                  background:
-                    lyricsScope === "online"
-                      ? "rgba(56, 189, 248, 0.25)"
-                      : "transparent",
-                  color: lyricsScope === "online" ? "#38bdf8" : "#94a3b8",
-                  border:
-                    lyricsScope === "online"
-                      ? "1px solid #38bdf8"
-                      : "1px solid transparent",
-                  fontSize: "11px",
-                  fontWeight: 800,
-                  cursor: "pointer",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "4px",
-                }}
-                title="Search online worship lyrics catalog directly"
-              >
-                <Globe size={12} />
-                <span>Online ({onlineSongResults.length})</span>
-              </button>
-            </div>
-
-            {/* Split Mode Selector */}
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "4px",
-                background: "rgba(0, 0, 0, 0.45)",
-                padding: "3px 8px",
-                borderRadius: "8px",
-                border: "1px solid rgba(255, 255, 255, 0.1)",
-              }}
-              title="How song lyrics are split into presentation slides"
-            >
-              <span
-                style={{
-                  fontSize: "10px",
-                  fontWeight: 800,
-                  color: "#94a3b8",
-                  textTransform: "uppercase",
-                }}
-              >
-                Split:
-              </span>
-              <select
-                value={lyricsSplitMode}
-                onChange={(e) => setLyricsSplitMode(e.target.value as any)}
-                style={{
-                  background: "transparent",
-                  border: "none",
-                  color: "#ffffff",
-                  fontSize: "11px",
-                  fontWeight: 800,
-                  outline: "none",
-                  cursor: "pointer",
-                }}
-              >
-                <option value="lines" style={{ background: "#0f172a" }}>
-                  1 Line / Slide
-                </option>
-                <option value="smart" style={{ background: "#0f172a" }}>
-                  Smart 2 (2 Lines)
-                </option>
-                <option value="smart3" style={{ background: "#0f172a" }}>
-                  Smart 3 (3 Lines)
-                </option>
-                <option value="stanzas" style={{ background: "#0f172a" }}>
-                  Full Stanzas
-                </option>
-              </select>
-            </div>
-
-            {/* Manual Add / Paste Lyric Button */}
-            <button
-              onClick={handleOpenAddSong}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "8px 14px",
-                borderRadius: "8px",
-                background:
-                  "linear-gradient(135deg, rgba(139, 92, 246, 0.25) 0%, rgba(99, 102, 241, 0.18) 100%)",
-                border: "1.5px solid rgba(139, 92, 246, 0.5)",
-                color: "#c084fc",
-                fontWeight: 800,
-                fontSize: "12px",
-                cursor: "pointer",
-                boxShadow: "0 0 15px rgba(139, 92, 246, 0.2)",
-                whiteSpace: "nowrap",
-                transition: "all 0.15s ease",
-              }}
-              title="Manually paste or write lyrics to add a worship song to your bank"
-            >
-              <Plus size={14} />
-              <span>Manual Add Lyric</span>
-            </button>
-          </div>
-
-          {/* Popular Worship Quick Jump Chips */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              overflowX: "auto",
-              paddingBottom: "2px",
-            }}
-          >
-            <span
-              style={{
-                fontSize: "11px",
-                fontWeight: 800,
-                color: "#94a3b8",
-                textTransform: "uppercase",
-                flexShrink: 0,
-              }}
-            >
-              Popular Songs:
-            </span>
-            <div style={{ display: "flex", gap: "6px", flexWrap: "nowrap" }}>
-              {POPULAR_WORSHIP_SONGS.slice(0, 10).map((song) => (
-                <button
-                  key={song.title}
-                  onClick={() => {
-                    setLyricsQuery(song.title);
-                    setShowLyricSuggestions(false);
-                  }}
-                  style={{
-                    padding: "3px 9px",
-                    borderRadius: "6px",
-                    background: "rgba(255, 255, 255, 0.05)",
-                    border: "1px solid rgba(255, 255, 255, 0.08)",
-                    color: "#e2e8f0",
-                    fontSize: "11px",
-                    fontWeight: 600,
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                    transition: "all 0.1s",
-                  }}
-                >
-                  {song.title}
-                </button>
-              ))}
-            </div>
-          </div>
-        </section>
-      ) : (
-        <section
-          style={{
-            padding: "12px 20px",
-            background: "rgba(15, 23, 42, 0.85)",
-            borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-            display: "flex",
-            flexDirection: "column",
-            gap: "10px",
-            flexShrink: 0,
-            position: "relative",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "12px",
-              position: "relative",
-            }}
-          >
-            {/* Main Search Input with Dynamic Dropdown Suggestions */}
-            <div style={{ position: "relative", flex: 1 }}>
-              <Search
-                size={18}
-                color="#38bdf8"
-                style={{
-                  position: "absolute",
-                  left: "14px",
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  zIndex: 2,
-                }}
-              />
-              <input
-                ref={searchInputRef}
-                type="text"
-                value={searchQuery}
-                onChange={(e) => {
-                  const val = e.target.value;
-
-                  // A. If completely cleared (empty or whitespace only)
-                  if (!val.trim()) {
-                    setSearchQuery("");
-                    setShowSuggestions(false);
-                    setActiveSuggestionIndex(-1);
-                    setSelectedChapter(null);
-                    setSelectedVerseNumber(null);
-                    setScriptureResult(null);
-                    return;
-                  }
-
-                  // B. If existing query had book letters and the new value has NO book letters at all
-                  // (e.g. user had "John 3:16" or "Gen 1" and cleared/deleted the Bible name, leaving " 3:16", "3:16", ":16", " 1", etc.)
-                  // Clear the remaining chapter and verse as requested!
-                  const hadBookLetters = /[a-zA-Z]/.test(searchQuery);
-                  const hasNoBookLetters = !/[a-zA-Z]/.test(val);
-                  if (hadBookLetters && hasNoBookLetters) {
-                    setSearchQuery("");
-                    setShowSuggestions(false);
-                    setActiveSuggestionIndex(-1);
-                    setSelectedChapter(null);
-                    setSelectedVerseNumber(null);
-                    setScriptureResult(null);
-                    return;
-                  }
-
-                  // C. Check if user cleared the existing book name and started typing a new book name
-                  // (e.g. had "John 3:16", highlighted "John" and typed "m" -> val is "m 3:16")
-                  // In this case, the trailing chapter and verse from the previous book should be stripped.
-                  const prevRefMatch = searchQuery.match(
-                    /^([1-3]?\s*[a-zA-Z\s]+?)\s+(\d+)(?::\d+(?:-\d+)?)?$/
-                  );
-                  if (prevRefMatch) {
-                    const prevBook = prevRefMatch[1].trim();
-                    const prevSuffix = searchQuery.slice(prevBook.length); // e.g. " 3:16" or " 3"
-                    if (
-                      prevSuffix &&
-                      val.endsWith(prevSuffix) &&
-                      val.length > prevSuffix.length
-                    ) {
-                      const newBookCandidate = val
-                        .slice(0, val.length - prevSuffix.length)
-                        .trim();
-                      if (
-                        newBookCandidate.toLowerCase() !==
-                        prevBook.toLowerCase()
-                      ) {
-                        setSelectedChapter(null);
-                        setSelectedVerseNumber(null);
-                        setScriptureResult(null);
-                        setSearchQuery(newBookCandidate);
-                        setShowSuggestions(true);
-                        setActiveSuggestionIndex(-1);
-                        return;
-                      }
-                    }
-                  }
-
-                  // 1. Spaced verse with trailing space: e.g. "John 3 16 " -> "John 3:16-"
-                  const spacedVerseTrailingSpace = val.match(
-                    /^([1-3]?\s*[a-zA-Z\s]+?)\s+(\d+)\s+(\d+)\s+$/,
-                  );
-                  if (spacedVerseTrailingSpace) {
-                    const bookCandidate = spacedVerseTrailingSpace[1].trim();
-                    const chapterNum = spacedVerseTrailingSpace[2];
-                    const verseNum = spacedVerseTrailingSpace[3];
-                    const matchedBook = findBestBookMatch(bookCandidate);
-                    const canonicalBook = matchedBook
-                      ? matchedBook.name
-                      : bookCandidate;
-                    updateQueryAndFocusEnd(
-                      `${canonicalBook} ${chapterNum}:${verseNum}-`,
-                    );
-                    return;
-                  }
-
-                  // 2. Spaced verse auto-format without trailing space: e.g. "John 3 16" -> "John 3:16"
-                  const spacedVerseMatch = val.match(
-                    /^([1-3]?\s*[a-zA-Z\s]+?)\s+(\d+)\s+(\d+)$/,
-                  );
-                  if (spacedVerseMatch) {
-                    const bookCandidate = spacedVerseMatch[1].trim();
-                    const chapterNum = spacedVerseMatch[2];
-                    const verseNum = spacedVerseMatch[3];
-                    const matchedBook = findBestBookMatch(bookCandidate);
-                    const canonicalBook = matchedBook
-                      ? matchedBook.name
-                      : bookCandidate;
-                    updateQueryAndFocusEnd(
-                      `${canonicalBook} ${chapterNum}:${verseNum}`,
-                    );
-                    return;
-                  }
-
-                  // 3. Auto-insert "-" if user typed space after verse number (e.g. "John 3:16 " -> "John 3:16-")
-                  const trailingSpaceAfterVerse = val.match(
-                    /^([1-3]?\s*[a-zA-Z\s]+?\s+\d+:\d+)\s+$/,
-                  );
-                  if (trailingSpaceAfterVerse) {
-                    updateQueryAndFocusEnd(`${trailingSpaceAfterVerse[1]}-`);
-                    return;
-                  }
-
-                  // 4. Auto-insert colon if user typed space after chapter number (e.g. "John 3 " -> "John 3:")
-                  const trailingSpaceAfterChapter = val.match(
-                    /^([1-3]?\s*[a-zA-Z\s]+?)\s+(\d+)\s+$/,
-                  );
-                  if (trailingSpaceAfterChapter) {
-                    const bookCandidate = trailingSpaceAfterChapter[1].trim();
-                    const chapterNum = trailingSpaceAfterChapter[2];
-                    const matchedBook = findBestBookMatch(bookCandidate);
-                    const canonicalBook = matchedBook
-                      ? matchedBook.name
-                      : bookCandidate;
-                    updateQueryAndFocusEnd(`${canonicalBook} ${chapterNum}:`);
-                    return;
-                  }
-
-                  // 5. Auto-complete book name on trailing space (e.g. "joh " -> "John ", "1cor " -> "1 Corinthians ")
-                  const trailingSpaceAfterBook = val.match(
-                    /^([1-3]?\s*[a-zA-Z]{2,})\s+$/,
-                  );
-                  if (trailingSpaceAfterBook) {
-                    const bookCandidate = trailingSpaceAfterBook[1].trim();
-                    const matchedBook = findBestBookMatch(bookCandidate);
-                    if (
-                      matchedBook &&
-                      matchedBook.name.toLowerCase() !== val.trim().toLowerCase()
-                    ) {
-                      updateQueryAndFocusEnd(`${matchedBook.name} `);
-                      return;
-                    }
-                  }
-
-                  // 6. Auto-normalize book name if colon is typed directly after chapter (e.g. "joh 3:" -> "John 3:")
-                  const directColonMatch = val.match(
-                    /^([1-3]?\s*[a-zA-Z\s]+?)\s*(\d+):$/,
-                  );
-                  if (directColonMatch) {
-                    const bookCandidate = directColonMatch[1].trim();
-                    const chapterNum = directColonMatch[2];
-                    const matchedBook = findBestBookMatch(bookCandidate);
-                    if (
-                      matchedBook &&
-                      matchedBook.name.toLowerCase() !==
-                        bookCandidate.toLowerCase()
-                    ) {
-                      updateQueryAndFocusEnd(
-                        `${matchedBook.name} ${chapterNum}:`,
-                      );
-                      return;
-                    }
-                  }
-
-                  setSearchQuery(val);
-                  if (val.trim().length > 0) {
-                    setShowSuggestions(true);
-                    setActiveSuggestionIndex(-1);
-                  } else {
-                    setShowSuggestions(false);
-                  }
-                }}
-                onFocus={(e) => {
-                  if (searchQuery.trim().length > 0) {
-                    setShowSuggestions(true);
-                    e.currentTarget.select();
-                  }
-                }}
-                onMouseUp={(e) => {
-                  if (!hasScriptureFocusedRef.current) {
-                    hasScriptureFocusedRef.current = true;
-                    e.currentTarget.select();
-                  }
-                }}
-                onBlur={() => {
-                  hasScriptureFocusedRef.current = false;
-                }}
-                onKeyDown={(e) => {
-                  // Tab or Space completion
-                  if (e.key === "Tab" || e.key === " ") {
-                    const trimmed = searchQuery.trim();
-
-                    // A. If suggestions list is visible and user navigated to an active item
-                    if (
-                      showSuggestions &&
-                      suggestions.length > 0 &&
-                      activeSuggestionIndex >= 0
-                    ) {
-                      const activeSug = suggestions[activeSuggestionIndex];
-                      e.preventDefault();
-                      if (activeSug.type === "book") {
-                        updateQueryAndFocusEnd(`${activeSug.text} `);
-                      } else if (activeSug.type === "chapter") {
-                        updateQueryAndFocusEnd(`${activeSug.text}:`);
-                      } else if (
-                        activeSug.type === "verse" ||
-                        activeSug.type === "version"
-                      ) {
-                        updateQueryAndFocusEnd(activeSug.text);
-                      } else {
-                        updateQueryAndFocusEnd(activeSug.text);
-                      }
-                      return;
-                    }
-
-                    // B. Verse entered with colon (e.g. "John 3:16", "Romans 8:28", "Psalm 23:1")
-                    // -> Auto-insert "-" on Space key so user can type end verse or press Enter
-                    const bookVerseMatch = trimmed.match(
-                      /^([1-3]?\s*[a-zA-Z\s]+?\s+\d+:\d+)$/,
-                    );
-                    if (bookVerseMatch && e.key === " ") {
-                      e.preventDefault();
-                      updateQueryAndFocusEnd(`${trimmed}-`);
-                      return;
-                    }
-
-                    // C. Spaced verse without colon (e.g. "John 3 16", "Gen 1 1")
-                    // -> Auto-format to colon and insert "-" on Space key
-                    const spacedVerseMatch = trimmed.match(
-                      /^([1-3]?\s*[a-zA-Z\s]+?)\s+(\d+)\s+(\d+)$/,
-                    );
-                    if (spacedVerseMatch && e.key === " ") {
-                      e.preventDefault();
-                      const bookPart = spacedVerseMatch[1].trim();
-                      const chapterPart = spacedVerseMatch[2];
-                      const versePart = spacedVerseMatch[3];
-                      const matchedBook = findBestBookMatch(bookPart);
-                      const canonicalBook = matchedBook
-                        ? matchedBook.name
-                        : bookPart;
-                      updateQueryAndFocusEnd(
-                        `${canonicalBook} ${chapterPart}:${versePart}-`,
-                      );
-                      return;
-                    }
-
-                    // D. Chapter entered without colon (e.g. "John 3", "Gen 1", "Rom 8", "1 Cor 13")
-                    // -> Autocomplete/normalize book, keep chapter, and auto-insert ":"
-                    const bookChapterMatch = trimmed.match(
-                      /^([1-3]?\s*[a-zA-Z\s]+?)\s+(\d+)$/,
-                    );
-                    if (bookChapterMatch) {
-                      e.preventDefault();
-                      const bookPart = bookChapterMatch[1].trim();
-                      const chapterPart = bookChapterMatch[2];
-                      const matchedBook = findBestBookMatch(bookPart);
-                      const canonicalBook = matchedBook
-                        ? matchedBook.name
-                        : bookPart;
-                      updateQueryAndFocusEnd(
-                        `${canonicalBook} ${chapterPart}:`,
-                      );
-                      return;
-                    }
-
-                    // E. Book name typing (e.g. "joh", "gen", "1co", "matt", "rom", "psa")
-                    // Do not intercept if user just typed single digit "1", "2", "3" with space
-                    if (e.key === " " && /^[1-3]$/.test(trimmed)) {
-                      // Let space pass through so user can type "1 Cor", "2 Kings", etc.
-                      return;
-                    }
-
-                    // Match book abbreviation or partial name
-                    const bookOnlyMatch = trimmed.match(
-                      /^([1-3]?\s*[a-zA-Z\s]+)$/,
-                    );
-                    if (bookOnlyMatch) {
-                      const matchedBook = findBestBookMatch(trimmed);
-                      if (matchedBook) {
-                        e.preventDefault();
-                        updateQueryAndFocusEnd(`${matchedBook.name} `);
-                        return;
-                      }
-                    }
-
-                    // F. If at chapter with colon (e.g. "John 3:") and user hits TAB
-                    // Autocomplete to top verse suggestion (e.g. "John 3:16" or "John 3:1")
-                    if (
-                      e.key === "Tab" &&
-                      showSuggestions &&
-                      suggestions.length > 0
-                    ) {
-                      e.preventDefault();
-                      const topSug = suggestions[0];
-                      if (topSug.type === "verse") {
-                        updateQueryAndFocusEnd(topSug.text);
-                      } else if (topSug.type === "book") {
-                        updateQueryAndFocusEnd(`${topSug.text} `);
-                      } else if (topSug.type === "chapter") {
-                        updateQueryAndFocusEnd(`${topSug.text}:`);
-                      } else {
-                        updateQueryAndFocusEnd(topSug.text);
-                      }
-                      return;
-                    }
-                  }
-
-                  if (showSuggestions && suggestions.length > 0) {
-                    if (e.key === "ArrowDown") {
-                      e.preventDefault();
-                      setActiveSuggestionIndex((prev) =>
-                        prev < suggestions.length - 1 ? prev + 1 : 0,
-                      );
-                      return;
-                    }
-                    if (e.key === "ArrowUp") {
-                      e.preventDefault();
-                      setActiveSuggestionIndex((prev) =>
-                        prev > 0 ? prev - 1 : suggestions.length - 1,
-                      );
-                      return;
-                    }
-                    if (e.key === "Escape") {
-                      setShowSuggestions(false);
-                      return;
-                    }
-                  }
-
-                  // ENTER: GO LIVE (INSTANT BROADCAST TO SCREEN)
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    setShowSuggestions(false);
-                    const targetQuery =
-                      showSuggestions &&
-                      activeSuggestionIndex >= 0 &&
-                      suggestions[activeSuggestionIndex]
-                        ? suggestions[activeSuggestionIndex].text
-                        : searchQuery;
-                    setSearchQuery(targetQuery);
-                    fetchScripture(targetQuery, selectedVersion, true);
-                    return;
-                  }
-                }}
-                placeholder="Search reference e.g., 'John 3:16', 'Gen 1', 'Romans 8:28', 'Psalm 23'..."
-                style={{
-                  width: "100%",
-                  padding: "11px 44px 11px 44px",
-                  background: "rgba(0, 0, 0, 0.5)",
-                  border: "1.5px solid rgba(56, 189, 248, 0.4)",
-                  borderRadius: "10px",
-                  color: "#ffffff",
-                  fontSize: "15px",
-                  fontWeight: 600,
-                  outline: "none",
-                  boxShadow: "0 0 20px rgba(56, 189, 248, 0.15)",
-                  boxSizing: "border-box",
-                }}
-              />
-
-              <div
-                style={{
-                  position: "absolute",
-                  right: "14px",
-                  top: "50%",
-                  transform: "translateY(-50%)",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  zIndex: 2,
-                }}
-              >
-                {loading && (
-                  <RefreshCw
-                    size={16}
-                    color="#38bdf8"
-                    style={{
-                      animation: "spin 1s linear infinite",
-                    }}
-                  />
-                )}
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={handleClearScriptureSearch}
-                    style={{
-                      background: "rgba(255, 255, 255, 0.1)",
-                      border: "none",
-                      borderRadius: "50%",
-                      width: "20px",
-                      height: "20px",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "#94a3b8",
-                      cursor: "pointer",
-                      padding: 0,
-                    }}
-                    title="Clear scripture search"
-                  >
-                    <X size={12} />
-                  </button>
-                )}
-              </div>
-
-              {/* LIVE AUTOCOMPLETE SUGGESTIONS DROPDOWN (LIKE SCRIPTURE MODAL) */}
-              {showSuggestions && suggestions.length > 0 && (
-                <div
-                  ref={suggestionsContainerRef}
-                  style={{
-                    position: "absolute",
-                    top: "calc(100% + 6px)",
-                    left: 0,
-                    right: 0,
-                    background: "#0f172a",
-                    border: "1.5px solid rgba(56, 189, 248, 0.4)",
-                    borderRadius: "10px",
-                    boxShadow:
-                      "0 20px 40px rgba(0, 0, 0, 0.85), 0 0 20px rgba(56, 189, 248, 0.2)",
-                    zIndex: 100,
-                    overflow: "hidden",
-                  }}
-                >
-                  {suggestions.map((sug, idx) => {
-                    const isActive = idx === activeSuggestionIndex;
-                    return (
-                      <div
-                        key={idx}
-                        style={{
-                          padding: "10px 14px",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          cursor: "pointer",
-                          background: isActive
-                            ? "rgba(56, 189, 248, 0.2)"
-                            : "transparent",
-                          borderBottom:
-                            idx < suggestions.length - 1
-                              ? "1px solid rgba(255, 255, 255, 0.06)"
-                              : "none",
-                          transition: "background 0.1s",
-                        }}
-                        onMouseEnter={() => setActiveSuggestionIndex(idx)}
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          handleSelectSuggestion(sug);
-                        }}
-                      >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "9px",
-                          }}
-                        >
-                          <BookOpen size={14} color="#38bdf8" />
-                          <span
-                            style={{
-                              fontSize: "14px",
-                              fontWeight: 700,
-                              color: "#ffffff",
-                            }}
-                          >
-                            {sug.label}
-                          </span>
-                          {sug.subLabel && (
-                            <span
-                              style={{ fontSize: "11px", color: "#94a3b8" }}
-                            >
-                              • {sug.subLabel}
-                            </span>
-                          )}
-                        </div>
-                        {sug.badge && (
-                          <span
-                            style={{
-                              fontSize: "10px",
-                              fontWeight: 800,
-                              padding: "2px 8px",
-                              background: "rgba(56, 189, 248, 0.15)",
-                              color: "#38bdf8",
-                              borderRadius: "4px",
-                            }}
-                          >
-                            {sug.badge}
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-
-            {/* Translation Dropdown */}
-            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <span
-                style={{ fontSize: "11px", color: "#64748b", fontWeight: 800 }}
-              >
-                TRANSLATION:
-              </span>
-              <select
-                value={selectedVersion}
-                onChange={(e) => {
-                  const newVer = e.target.value;
-                  setSelectedVersion(newVer);
-
-                  let targetQuery = "";
-                  if (scriptureResult?.reference) {
-                    const baseBookChapter =
-                      scriptureResult.reference.match(/^([1-3]?\s*[a-zA-Z\s]+?\s*\d+)/)?.[1]?.trim() ||
-                      scriptureResult.reference;
-                    targetQuery = selectedVerseNumber
-                      ? `${baseBookChapter}:${selectedVerseNumber}`
-                      : baseBookChapter;
-                  } else {
-                    targetQuery = searchQuery.trim();
-                  }
-
-                  const versionCodes = AVAILABLE_BIBLE_VERSIONS.map((v) => v.id);
-                  const versionRegex = new RegExp(`[\\s,\\(-]+(${versionCodes.join("|")})[\\)\\s]*$`, "i");
-                  targetQuery = targetQuery.replace(versionRegex, "").trim();
-
-                  if (targetQuery) {
-                    setSearchQuery(targetQuery);
-                  }
-
-                  const currentVerseNum =
-                    selectedVerseNumber ??
-                    scriptureResult?.verses?.[selectedSlideIndex]?.verse ??
-                    null;
-
-                  const isCurrentScriptureLive =
-                    state.category === "scripture" &&
-                    Boolean(state.title) &&
-                    Boolean(targetQuery) &&
-                    state.title.toLowerCase().includes(
-                      targetQuery.split(/[:\s]/)[0].toLowerCase()
-                    );
-
-                  if (targetQuery) {
-                    fetchScripture(targetQuery, newVer, isCurrentScriptureLive, currentVerseNum);
-                  }
-                }}
-                style={{
-                  background: "rgba(0, 0, 0, 0.5)",
-                  border: "1px solid rgba(56, 189, 248, 0.4)",
-                  borderRadius: "8px",
-                  color: "#38bdf8",
-                  fontWeight: 800,
-                  fontSize: "13px",
-                  padding: "10px 14px",
-                  outline: "none",
-                  cursor: "pointer",
-                }}
-              >
-                {AVAILABLE_BIBLE_VERSIONS.map((v) => (
-                  <option
-                    key={v.id}
-                    value={v.id}
-                    style={{ background: "#0f172a", color: "#ffffff" }}
-                  >
-                    {v.id} - {v.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Split Mode Options */}
-            <div style={{ display: "flex", alignItems: "center", gap: "4px" }}>
-              <button
-                onClick={() => setSplitMode("verse")}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: "6px",
-                  fontSize: "11px",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  background:
-                    splitMode === "verse"
-                      ? "rgba(56, 189, 248, 0.25)"
-                      : "rgba(255, 255, 255, 0.04)",
-                  border:
-                    splitMode === "verse"
-                      ? "1px solid #38bdf8"
-                      : "1px solid rgba(255, 255, 255, 0.08)",
-                  color: splitMode === "verse" ? "#38bdf8" : "#94a3b8",
-                }}
-                title="1 verse per slide (EasyWorship default, large readable text)"
-              >
-                1 Verse/Slide
-              </button>
-              <button
-                onClick={() => setSplitMode("double")}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: "6px",
-                  fontSize: "11px",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  background:
-                    splitMode === "double"
-                      ? "rgba(56, 189, 248, 0.25)"
-                      : "rgba(255, 255, 255, 0.04)",
-                  border:
-                    splitMode === "double"
-                      ? "1px solid #38bdf8"
-                      : "1px solid rgba(255, 255, 255, 0.08)",
-                  color: splitMode === "double" ? "#38bdf8" : "#94a3b8",
-                }}
-                title="2 verses per slide"
-              >
-                2 Verses/Slide
-              </button>
-              <button
-                onClick={() => setSplitMode("full")}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: "6px",
-                  fontSize: "11px",
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  background:
-                    splitMode === "full"
-                      ? "rgba(56, 189, 248, 0.25)"
-                      : "rgba(255, 255, 255, 0.04)",
-                  border:
-                    splitMode === "full"
-                      ? "1px solid #38bdf8"
-                      : "1px solid rgba(255, 255, 255, 0.08)",
-                  color: splitMode === "full" ? "#38bdf8" : "#94a3b8",
-                }}
-                title="Full passage on single slide"
-              >
-                Full Chapter
-              </button>
-
-              <label
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "5px",
-                  fontSize: "11px",
-                  color: "#94a3b8",
-                  cursor: "pointer",
-                  marginLeft: "6px",
-                }}
-                title="Include reference tag on each slide footer"
-              >
-                <input
-                  type="checkbox"
-                  checked={includeReferenceOnSlide}
-                  onChange={(e) => setIncludeReferenceOnSlide(e.target.checked)}
-                  style={{ accentColor: "#38bdf8", cursor: "pointer" }}
+            {activeTab === "lyrics" ? (
+              <>
+                <V2LyricsLibraryPanel
+                  lyricsScope={lyricsScope}
+                  setLyricsScope={setLyricsScope}
+                  lyricsLoading={lyricsLoading}
+                  combinedSongResults={combinedSongResults}
+                  selectedSong={selectedSong}
+                  state={state}
+                  onSelectSong={handleSelectSong}
+                  onOpenAddSong={handleOpenAddSong}
+                  onOpenEditSong={handleOpenEditSong}
+                  onSaveSongToLibrary={handleSaveSongToLibrary}
+                  onSaveAndSendToLive={handleSaveAndSendToLive}
+                  onAddSongToSchedule={handleAddSongToSchedule}
+                  onDeleteLibraryItem={onDeleteLibraryItem}
                 />
-                <span>Citation Tag</span>
-              </label>
-            </div>
-
-            {/* Search Action Button */}
-            <button
-              onClick={() => fetchScripture(searchQuery, selectedVersion, true)}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "10px 18px",
-                borderRadius: "8px",
-                background: "linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)",
-                color: "#ffffff",
-                fontWeight: 800,
-                fontSize: "13px",
-                border: "none",
-                cursor: "pointer",
-                boxShadow: "0 0 16px rgba(14, 165, 233, 0.4)",
-              }}
-            >
-              <Search size={15} />
-              <span>Search & Go Live</span>
-            </button>
-          </div>
-
-          {/* Popular scripture pills */}
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              overflowX: "auto",
-              paddingBottom: "2px",
-            }}
-          >
-            <span
-              style={{
-                fontSize: "11px",
-                fontWeight: 800,
-                color: "#64748b",
-                flexShrink: 0,
-              }}
-            >
-              QUICK JUMP:
-            </span>
-            {POPULAR_SCRIPTURES.map((p) => (
-              <button
-                key={p.query}
-                onClick={() => {
-                  setSearchQuery(p.query);
-                  fetchScripture(p.query, selectedVersion, true);
-                }}
-                style={{
-                  padding: "4px 10px",
-                  borderRadius: "999px",
-                  background: "rgba(255, 255, 255, 0.04)",
-                  border: "1px solid rgba(255, 255, 255, 0.08)",
-                  color: "#cbd5e1",
-                  fontSize: "11px",
-                  fontWeight: 600,
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                  transition: "all 0.15s",
-                }}
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
-
-          {searchError && (
-            <div
-              style={{
-                padding: "6px 12px",
-                borderRadius: "6px",
-                background: "rgba(239, 68, 68, 0.15)",
-                border: "1px solid rgba(239, 68, 68, 0.3)",
-                color: "#f87171",
-                fontSize: "12px",
-                fontWeight: 600,
-                display: "flex",
-                alignItems: "center",
-                gap: "8px",
-              }}
-            >
-              <AlertTriangle size={14} />
-              <span>{searchError}</span>
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* ============================================================= */}
-      {/* 4. MAIN WORKSPACE: SCRIPTURE OR LYRIC PRESENTATION + DECK     */}
-      {/* ============================================================= */}
-      <main
-        style={{
-          display: "flex",
-          flex: 1,
-          overflow: "hidden",
-          background: "#090d16",
-        }}
-      >
-        {activeTab === "lyrics" ? (
-          <>
-            {/* PANEL L1: WORSHIP SONG REPOSITORY & SEARCH RESULTS (Local & Online) */}
-            <div
-              style={{
-                width: "320px",
-                flexShrink: 0,
-                borderRight: "1px solid rgba(255, 255, 255, 0.08)",
-                display: "flex",
-                flexDirection: "column",
-                background: "rgba(15, 23, 42, 0.65)",
-              }}
-            >
-              {/* Header */}
-              <div
-                style={{
-                  padding: "12px 16px",
-                  borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  background: "rgba(255, 255, 255, 0.02)",
-                }}
-              >
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "6px" }}
-                >
-                  <button
-                    onClick={handleOpenAddSong}
-                    style={{
-                      padding: "4px 9px",
-                      borderRadius: "6px",
-                      background:
-                        "linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)",
-                      border: "none",
-                      color: "#ffffff",
-                      fontSize: "11px",
-                      fontWeight: 800,
-                      cursor: "pointer",
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "4px",
-                      boxShadow: "0 0 10px rgba(139, 92, 246, 0.35)",
-                      whiteSpace: "nowrap",
-                    }}
-                    title="Add new song or paste lyrics manually to Song Bank"
-                  >
-                    <Plus size={12} />
-                    <span>Add</span>
-                  </button>
-
-                  {/* Scope selector */}
-                  <div
-                    style={{
-                      display: "flex",
-                      background: "rgba(0, 0, 0, 0.4)",
-                      padding: "2px",
-                      borderRadius: "6px",
-                      border: "1px solid rgba(255, 255, 255, 0.08)",
-                    }}
-                  >
-                    {(
-                      [
-                        { id: "all", label: "All" },
-                        { id: "local", label: "Local" },
-                        { id: "online", label: "Online" },
-                      ] as const
-                    ).map((scope) => (
-                      <button
-                        key={scope.id}
-                        onClick={() => setLyricsScope(scope.id)}
-                        style={{
-                          padding: "3px 8px",
-                          borderRadius: "4px",
-                          fontSize: "10px",
-                          fontWeight: 700,
-                          border: "none",
-                          cursor: "pointer",
-                          background:
-                            lyricsScope === scope.id
-                              ? "#8b5cf6"
-                              : "transparent",
-                          color:
-                            lyricsScope === scope.id ? "#ffffff" : "#94a3b8",
-                          transition: "all 0.12s",
-                        }}
-                      >
-                        {scope.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Sub-header status badge */}
-              <div
-                style={{
-                  padding: "7px 16px",
-                  background: "rgba(0, 0, 0, 0.25)",
-                  borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  fontSize: "11px",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "6px",
-                    color: "#94a3b8",
+                <V2LyricsSlideDeck
+                  selectedSong={selectedSong}
+                  lyricSlides={lyricSlides}
+                  selectedLyricSlideIndex={selectedLyricSlideIndex}
+                  setSelectedLyricSlideIndex={setSelectedLyricSlideIndex}
+                  isSelectedSongSaved={isSelectedSongSaved}
+                  state={state}
+                  lyricsSplitMode={lyricsSplitMode}
+                  setLyricsSplitMode={setLyricsSplitMode}
+                  onSaveSongToLibrary={handleSaveSongToLibrary}
+                  onSaveAndSendToLive={handleSaveAndSendToLive}
+                  onOpenEditSong={handleOpenEditSong}
+                  onOpenFormatModal={() => {
+                    setFormatModalTab("lyrics");
+                    setShowTypographyModal(true);
                   }}
-                >
-                  {lyricsScope === "local" ? (
-                    <>
-                      <HardDrive size={13} color="#34d399" />
-                      <span>Church Local Library</span>
-                    </>
-                  ) : lyricsScope === "online" ? (
-                    <>
-                      <Globe size={13} color="#a78bfa" />
-                      <span>Online LRCLIB Catalog</span>
-                    </>
-                  ) : (
-                    <>
-                      <Sparkles size={13} color="#60a5fa" />
-                      <span>Local Church Library + Online</span>
-                    </>
-                  )}
-                </div>
-                {lyricsLoading && (
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "5px",
-                      color: "#c084fc",
-                      fontSize: "10px",
-                      fontWeight: 600,
-                    }}
-                  >
-                    <Loader2 size={12} className="animate-spin" />
-                    <span>Searching...</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Song list */}
-              <div
-                style={{
-                  flex: 1,
-                  overflowY: "auto",
-                  padding: "10px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "8px",
-                }}
-              >
-                {combinedSongResults.length === 0 ? (
-                  <div
-                    style={{
-                      flex: 1,
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      textAlign: "center",
-                      padding: "30px 20px",
-                      color: "#64748b",
-                    }}
-                  >
-                    <Music
-                      size={36}
-                      color="#475569"
-                      style={{ marginBottom: "12px" }}
-                    />
-                    <div
-                      style={{
-                        fontSize: "13px",
-                        fontWeight: 700,
-                        color: "#cbd5e1",
-                        marginBottom: "6px",
-                      }}
-                    >
-                      {lyricsLoading
-                        ? "Searching Online Catalog..."
-                        : "No Worship Songs Found"}
-                    </div>
-                    <div
-                      style={{
-                        fontSize: "11px",
-                        lineHeight: 1.5,
-                        maxWidth: "260px",
-                        marginBottom: "12px",
-                      }}
-                    >
-                      {lyricsScope === "local"
-                        ? 'No matches in your local church library. Try switching scope to "All" or "Online" to fetch from LRCLIB.'
-                        : 'Try searching with common worship titles like "Way Maker", "Goodness of God", "Amazing Grace", or "Gratitude".'}
-                    </div>
-                    <button
-                      onClick={handleOpenAddSong}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        padding: "6px 14px",
-                        borderRadius: "6px",
-                        background: "rgba(139, 92, 246, 0.22)",
-                        border: "1px solid rgba(139, 92, 246, 0.45)",
-                        color: "#c084fc",
-                        fontSize: "11px",
-                        fontWeight: 700,
-                        cursor: "pointer",
-                        transition: "all 0.15s ease",
-                      }}
-                      title="Paste lyrics and add a song manually to your Song Bank"
-                    >
-                      <Plus size={13} />
-                      <span>Paste / Add Song to Bank</span>
-                    </button>
-                  </div>
-                ) : (
-                  combinedSongResults.map((song) => {
-                    const isSelected = selectedSong?.id === song.id;
-                    const isCurrentlyLive =
-                      state.category === "song" &&
-                      state.title?.toLowerCase() ===
-                        song.trackName.toLowerCase() &&
-                      !state.liveState.isBlackout;
-
-                    return (
-                      <div
-                        key={song.id}
-                        onClick={() => handleSelectSong(song)}
-                        style={{
-                          padding: "12px",
-                          borderRadius: "10px",
-                          cursor: "pointer",
-                          background: isCurrentlyLive
-                            ? "linear-gradient(135deg, rgba(239, 68, 68, 0.18) 0%, rgba(139, 92, 246, 0.12) 100%)"
-                            : isSelected
-                              ? "linear-gradient(135deg, rgba(139, 92, 246, 0.22) 0%, rgba(99, 102, 241, 0.14) 100%)"
-                              : "rgba(255, 255, 255, 0.03)",
-                          border: isCurrentlyLive
-                            ? "1.5px solid rgba(239, 68, 68, 0.85)"
-                            : isSelected
-                              ? "1.5px solid rgba(167, 139, 250, 0.7)"
-                              : "1px solid rgba(255, 255, 255, 0.06)",
-                          boxShadow: isCurrentlyLive
-                            ? "0 4px 20px rgba(239, 68, 68, 0.35)"
-                            : isSelected
-                              ? "0 6px 20px rgba(139, 92, 246, 0.25)"
-                              : "none",
-                          transition: "all 0.15s ease",
-                          display: "flex",
-                          flexDirection: "column",
-                          gap: "6px",
-                        }}
-                      >
-                        {/* Top: Title & Scope Badge */}
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "flex-start",
-                            justifyContent: "space-between",
-                            gap: "8px",
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "6px",
-                              flex: 1,
-                              minWidth: 0,
-                            }}
-                          >
-                            <span
-                              style={{
-                                fontSize: "13px",
-                                fontWeight: 800,
-                                color: isSelected ? "#ffffff" : "#f1f5f9",
-                                whiteSpace: "nowrap",
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                              }}
-                            >
-                              {song.trackName}
-                            </span>
-                            {isCurrentlyLive && (
-                              <span
-                                style={{
-                                  fontSize: "9px",
-                                  fontWeight: 900,
-                                  background: "#ef4444",
-                                  color: "#ffffff",
-                                  padding: "1px 5px",
-                                  borderRadius: "4px",
-                                  flexShrink: 0,
-                                }}
-                              >
-                                LIVE
-                              </span>
-                            )}
-                          </div>
-
-                          {song.isLocal ? (
-                            <span
-                              style={{
-                                fontSize: "10px",
-                                fontWeight: 800,
-                                padding: "2px 6px",
-                                borderRadius: "4px",
-                                background: "rgba(16, 185, 129, 0.18)",
-                                border: "1px solid rgba(16, 185, 129, 0.35)",
-                                color: "#34d399",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "3px",
-                                flexShrink: 0,
-                              }}
-                            >
-                              <HardDrive size={10} /> BANK
-                            </span>
-                          ) : song.source === "google" ? (
-                            <span
-                              style={{
-                                fontSize: "10px",
-                                fontWeight: 800,
-                                padding: "2px 6px",
-                                borderRadius: "4px",
-                                background: "rgba(59, 130, 246, 0.18)",
-                                border: "1px solid rgba(59, 130, 246, 0.35)",
-                                color: "#60a5fa",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "3px",
-                                flexShrink: 0,
-                              }}
-                            >
-                              <Globe size={10} /> GOOGLE
-                            </span>
-                          ) : song.source === "genius" ? (
-                            <span
-                              style={{
-                                fontSize: "10px",
-                                fontWeight: 800,
-                                padding: "2px 6px",
-                                borderRadius: "4px",
-                                background: "rgba(234, 179, 8, 0.18)",
-                                border: "1px solid rgba(234, 179, 8, 0.35)",
-                                color: "#facc15",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "3px",
-                                flexShrink: 0,
-                              }}
-                            >
-                              <Music size={10} /> GENIUS
-                            </span>
-                          ) : (
-                            <span
-                              style={{
-                                fontSize: "10px",
-                                fontWeight: 800,
-                                padding: "2px 6px",
-                                borderRadius: "4px",
-                                background: "rgba(139, 92, 246, 0.18)",
-                                border: "1px solid rgba(139, 92, 246, 0.35)",
-                                color: "#c084fc",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "3px",
-                                flexShrink: 0,
-                              }}
-                            >
-                              <Globe size={10} /> ONLINE
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Artist */}
-                        <div
-                          style={{
-                            fontSize: "11px",
-                            color: "#94a3b8",
-                            fontWeight: 500,
-                          }}
-                        >
-                          {song.artistName}
-                        </div>
-
-                        {/* Snippet */}
-                        {song.snippet && (
-                          <div
-                            style={{
-                              fontSize: "11px",
-                              color: "#64748b",
-                              fontStyle: "italic",
-                              lineHeight: 1.3,
-                              overflow: "hidden",
-                              display: "-webkit-box",
-                              WebkitLineClamp: 2,
-                              WebkitBoxOrient: "vertical",
-                            }}
-                          >
-                            "{song.snippet}"
-                          </div>
-                        )}
-
-                        {/* Card Footer Actions */}
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            marginTop: "4px",
-                            paddingTop: "6px",
-                            borderTop: "1px solid rgba(255, 255, 255, 0.05)",
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "4px",
-                            }}
-                          >
-                            {song.isLocal ? (
-                              <>
-                                <span
-                                  style={{
-                                    fontSize: "10px",
-                                    color: "#34d399",
-                                    fontWeight: 700,
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "3px",
-                                  }}
-                                  title="Saved in your church Song Bank"
-                                >
-                                  <Check size={11} /> In Bank
-                                </span>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleOpenEditSong(song);
-                                  }}
-                                  style={{
-                                    padding: "2px 6px",
-                                    borderRadius: "4px",
-                                    background: "rgba(255, 255, 255, 0.08)",
-                                    border:
-                                      "1px solid rgba(255, 255, 255, 0.15)",
-                                    color: "#cbd5e1",
-                                    fontSize: "10px",
-                                    fontWeight: 700,
-                                    cursor: "pointer",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "2px",
-                                  }}
-                                  title="Edit lyrics in Song Bank"
-                                >
-                                  <Edit size={10} /> Edit
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSelectSong(song, true);
-                                  }}
-                                  style={{
-                                    padding: "2px 6px",
-                                    borderRadius: "4px",
-                                    background: "rgba(239, 68, 68, 0.15)",
-                                    border: "1px solid rgba(239, 68, 68, 0.3)",
-                                    color: "#f87171",
-                                    fontSize: "10px",
-                                    fontWeight: 700,
-                                    cursor: "pointer",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "2px",
-                                  }}
-                                  title="Send live directly"
-                                >
-                                  <Radio size={10} /> Live
-                                </button>
-                                {onDeleteLibraryItem && song.localItem?.id && (
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      if (
-                                        confirm(
-                                          `Delete "${song.trackName}" from Song Bank?`,
-                                        )
-                                      ) {
-                                        onDeleteLibraryItem(song.localItem!.id);
-                                      }
-                                    }}
-                                    style={{
-                                      padding: "2px 5px",
-                                      borderRadius: "4px",
-                                      background: "rgba(239, 68, 68, 0.12)",
-                                      border:
-                                        "1px solid rgba(239, 68, 68, 0.25)",
-                                      color: "#f87171",
-                                      fontSize: "10px",
-                                      cursor: "pointer",
-                                    }}
-                                    title="Delete from Song Bank"
-                                  >
-                                    <Trash2 size={10} />
-                                  </button>
-                                )}
-                              </>
-                            ) : (
-                              <>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSaveSongToLibrary(song);
-                                  }}
-                                  style={{
-                                    padding: "3px 7px",
-                                    borderRadius: "5px",
-                                    background: "rgba(16, 185, 129, 0.15)",
-                                    border:
-                                      "1px solid rgba(16, 185, 129, 0.35)",
-                                    color: "#34d399",
-                                    fontSize: "10px",
-                                    fontWeight: 700,
-                                    cursor: "pointer",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "3px",
-                                    transition: "all 0.12s",
-                                  }}
-                                  title="Save found song to local church Song Bank"
-                                >
-                                  <Bookmark size={10} /> + Bank
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleOpenEditSong(song);
-                                  }}
-                                  style={{
-                                    padding: "3px 6px",
-                                    borderRadius: "5px",
-                                    background: "rgba(139, 92, 246, 0.15)",
-                                    border: "1px solid rgba(139, 92, 246, 0.3)",
-                                    color: "#c084fc",
-                                    fontSize: "10px",
-                                    fontWeight: 700,
-                                    cursor: "pointer",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "2px",
-                                  }}
-                                  title="Edit lyrics and save to Song Bank"
-                                >
-                                  <Edit size={10} /> Edit
-                                </button>
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleSaveAndSendToLive(song);
-                                  }}
-                                  style={{
-                                    padding: "3px 6px",
-                                    borderRadius: "5px",
-                                    background: "rgba(239, 68, 68, 0.15)",
-                                    border: "1px solid rgba(239, 68, 68, 0.3)",
-                                    color: "#f87171",
-                                    fontSize: "10px",
-                                    fontWeight: 700,
-                                    cursor: "pointer",
-                                    display: "flex",
-                                    alignItems: "center",
-                                    gap: "2px",
-                                  }}
-                                  title="Save to bank & send live to screen directly"
-                                >
-                                  <Radio size={10} /> Live
-                                </button>
-                              </>
-                            )}
-                          </div>
-
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "6px",
-                            }}
-                          >
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleAddSongToSchedule(song);
-                              }}
-                              style={{
-                                padding: "3px 8px",
-                                borderRadius: "5px",
-                                background: "rgba(255, 255, 255, 0.06)",
-                                border: "1px solid rgba(255, 255, 255, 0.1)",
-                                color: "#e2e8f0",
-                                fontSize: "10px",
-                                fontWeight: 700,
-                                cursor: "pointer",
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "3px",
-                              }}
-                              title="Add to today's presentation schedule"
-                            >
-                              <ListPlus size={10} /> Schedule
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-
-            {/* PANEL L2: LYRIC SLIDE DECK (Center Stage) */}
-            <div
-              style={{
-                flex: 1,
-                display: "flex",
-                flexDirection: "column",
-                background: "#090d16",
-                overflow: "hidden",
-              }}
-            >
-              {/* Deck Header: Song Title, Split Mode, Typography, Go Live */}
-              <div
-                style={{
-                  padding: "12px 20px",
-                  borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  background: "rgba(15, 23, 42, 0.85)",
-                  gap: "12px",
-                }}
-              >
-                {/* Left: Song Meta */}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "10px",
-                    minWidth: 0,
-                    flex: 1,
-                    overflow: "hidden",
-                  }}
-                >
-                  <div
-                    style={{
-                      width: "36px",
-                      height: "36px",
-                      borderRadius: "8px",
-                      background: "rgba(139, 92, 246, 0.15)",
-                      border: "1px solid rgba(139, 92, 246, 0.35)",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      color: "#c084fc",
-                      flexShrink: 0,
-                    }}
-                  >
-                    <Music size={18} />
-                  </div>
-                  <div style={{ minWidth: 0, flex: 1, overflow: "hidden" }}>
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                      }}
-                    >
-                      <span
-                        style={{
-                          fontSize: "15px",
-                          fontWeight: 800,
-                          color: "#ffffff",
-                          whiteSpace: "nowrap",
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                        }}
-                      >
-                        {selectedSong
-                          ? selectedSong.trackName
-                          : "No Song Selected"}
-                      </span>
-                      <span
-                        style={{
-                          fontSize: "11px",
-                          fontWeight: 700,
-                          padding: "2px 8px",
-                          borderRadius: "999px",
-                          background: "rgba(139, 92, 246, 0.15)",
-                          border: "1px solid rgba(139, 92, 246, 0.3)",
-                          color: "#c084fc",
-                          flexShrink: 0,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {lyricSlides.length} Slides
-                      </span>
-                    </div>
-                    <div
-                      style={{
-                        fontSize: "11px",
-                        color: "#94a3b8",
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                      }}
-                    >
-                      {selectedSong?.artistName || "Worship Leader / Church"} •{" "}
-                      {selectedSong?.isLocal
-                        ? "Local Library"
-                        : "Online LRCLIB"}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Right Controls: Save to Bank, Edit Lyrics, Typography, Navigation & Go Live */}
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                    flexShrink: 0,
-                  }}
-                >
-                  {selectedSong && (
-                    <>
-                      {/* Save Found Song to Song Bank / In Bank status */}
-                      {!isSelectedSongSaved ? (
-                        <>
-                          <button
-                            onClick={() => handleSaveSongToLibrary(selectedSong)}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "6px",
-                              padding: "7px 13px",
-                              borderRadius: "8px",
-                              background: "rgba(16, 185, 129, 0.18)",
-                              border: "1.5px solid rgba(16, 185, 129, 0.45)",
-                              color: "#34d399",
-                              fontSize: "12px",
-                              fontWeight: 800,
-                              cursor: "pointer",
-                              boxShadow: "0 0 14px rgba(16, 185, 129, 0.25)",
-                            }}
-                            title="Save this found song to your church Song Bank"
-                          >
-                            <Bookmark size={14} />
-                            <span>Save to Song Bank</span>
-                          </button>
-                          <button
-                            onClick={() => handleSaveAndSendToLive(selectedSong)}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "6px",
-                              padding: "7px 13px",
-                              borderRadius: "8px",
-                              background:
-                                "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
-                              border: "none",
-                              color: "#ffffff",
-                              fontSize: "12px",
-                              fontWeight: 800,
-                              cursor: "pointer",
-                              boxShadow: "0 0 14px rgba(239, 68, 68, 0.45)",
-                            }}
-                            title="Save this online song to Song Bank with split mode and immediately broadcast live to screen"
-                          >
-                            <Radio size={14} />
-                            <span>Save & Send Live</span>
-                          </button>
-                        </>
-                      ) : (
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "5px",
-                            padding: "6px 11px",
-                            borderRadius: "8px",
-                            background: "rgba(16, 185, 129, 0.12)",
-                            border: "1px solid rgba(16, 185, 129, 0.3)",
-                            color: "#34d399",
-                            fontSize: "11px",
-                            fontWeight: 700,
-                          }}
-                          title="Saved in your church Song Bank"
-                        >
-                          <Check size={13} />
-                          <span>In Song Bank</span>
-                        </div>
-                      )}
-
-                      {/* Edit Lyrics / Song Button */}
-                      <button
-                        onClick={() => handleOpenEditSong(selectedSong)}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "5px",
-                          padding: "7px 12px",
-                          borderRadius: "8px",
-                          background: "rgba(139, 92, 246, 0.15)",
-                          border: "1px solid rgba(139, 92, 246, 0.35)",
-                          color: "#c084fc",
-                          fontSize: "12px",
-                          fontWeight: 700,
-                          cursor: "pointer",
-                        }}
-                        title="Edit lyrics, adjust stanzas, or customize this song"
-                      >
-                        <Edit size={14} />
-                        <span>Edit Lyrics</span>
-                      </button>
-                    </>
-                  )}
-
-                  {/* Formatting & typography styling modal launcher */}
-                  <button
-                    onClick={() => {
-                      setFormatModalTab(activeTab === 'lyrics' ? 'lyrics' : 'scripture');
-                      setShowTypographyModal(true);
-                    }}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "5px",
-                      padding: "7px 11px",
-                      borderRadius: "8px",
-                      background: "rgba(255, 255, 255, 0.06)",
-                      border: "1px solid rgba(255, 255, 255, 0.12)",
-                      color: "#e2e8f0",
-                      fontSize: "12px",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                    }}
-                    title="Change presentation formatting, fonts, sizes, and position"
-                  >
-                    <Sliders size={14} color="#a78bfa" />
-                    <span>Format</span>
-                  </button>
-
-                  {/* Prev / Next slide navigation buttons */}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "3px",
-                    }}
-                  >
-                    <button
-                      onClick={handlePrevSlide}
-                      disabled={selectedLyricSlideIndex <= 0}
-                      style={{
-                        padding: "6px 8px",
-                        borderRadius: "6px",
-                        background: "rgba(255, 255, 255, 0.06)",
-                        border: "1px solid rgba(255, 255, 255, 0.1)",
-                        color:
-                          selectedLyricSlideIndex <= 0 ? "#475569" : "#e2e8f0",
-                        cursor:
-                          selectedLyricSlideIndex <= 0
-                            ? "not-allowed"
-                            : "pointer",
-                      }}
-                      title="Previous Slide (Left Arrow)"
-                    >
-                      <ChevronLeft size={16} />
-                    </button>
-                    <button
-                      onClick={handleNextSlide}
-                      disabled={
-                        selectedLyricSlideIndex >= lyricSlides.length - 1
-                      }
-                      style={{
-                        padding: "6px 8px",
-                        borderRadius: "6px",
-                        background: "rgba(255, 255, 255, 0.06)",
-                        border: "1px solid rgba(255, 255, 255, 0.1)",
-                        color:
-                          selectedLyricSlideIndex >= lyricSlides.length - 1
-                            ? "#475569"
-                            : "#e2e8f0",
-                        cursor:
-                          selectedLyricSlideIndex >= lyricSlides.length - 1
-                            ? "not-allowed"
-                            : "pointer",
-                      }}
-                      title="Next Slide (Right Arrow / Space)"
-                    >
-                      <ChevronRight size={16} />
-                    </button>
-                  </div>
-
-                  {/* GO LIVE BUTTON */}
-                  <button
-                    onClick={() => handleGoLive()}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "7px",
-                      padding: "8px 16px",
-                      borderRadius: "8px",
-                      background:
-                        "linear-gradient(135deg, #ef4444 0%, #dc2626 100%)",
-                      color: "#ffffff",
-                      fontWeight: 900,
-                      fontSize: "12px",
-                      border: "none",
-                      cursor: "pointer",
-                      boxShadow: "0 0 18px rgba(239, 68, 68, 0.45)",
-                      letterSpacing: "0.04em",
-                    }}
-                    title="Send selected lyric slide directly to Live Display (Enter / F5)"
-                  >
-                    <Radio size={15} />
-                    <span>GO LIVE</span>
-                  </button>
-                </div>
-              </div>
-
-              {/* Sub-bar: Slide counter & quick screen blanking */}
-              <div
-                style={{
-                  padding: "6px 20px",
-                  background: "rgba(0, 0, 0, 0.35)",
-                  borderBottom: "1px solid rgba(255, 255, 255, 0.05)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  fontSize: "11px",
-                }}
-              >
-                <div
-                  style={{
-                    color: "#94a3b8",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: "8px",
-                  }}
-                >
-                  <span>
-                    Selected:{" "}
-                    <strong>Slide {selectedLyricSlideIndex + 1}</strong> of{" "}
-                    {lyricSlides.length}
-                  </span>
-                  <span style={{ color: "#475569" }}>•</span>
-                  <span style={{ color: "#64748b" }}>
-                    Double-click slide to project immediately
-                  </span>
-                </div>
-
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "8px" }}
-                >
-                  {/* Split mode in subbar */}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "3px",
-                      background: "rgba(0, 0, 0, 0.4)",
-                      padding: "2px 4px",
-                      borderRadius: "6px",
-                      border: "1px solid rgba(255, 255, 255, 0.08)",
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: "9px",
-                        fontWeight: 800,
-                        color: "#64748b",
-                        padding: "0 4px",
-                      }}
-                    >
-                      SPLIT:
-                    </span>
-                    {(
-                      [
-                        { id: "lines", label: "1 Line" },
-                        { id: "smart", label: "Smart 2" },
-                        { id: "smart3", label: "Smart 3" },
-                        { id: "stanzas", label: "Stanzas" },
-                      ] as const
-                    ).map((m) => (
-                      <button
-                        key={m.id}
-                        onClick={() => setLyricsSplitMode(m.id)}
-                        style={{
-                          padding: "3px 8px",
-                          borderRadius: "4px",
-                          fontSize: "10px",
-                          fontWeight: 700,
-                          border: "none",
-                          cursor: "pointer",
-                          background:
-                            lyricsSplitMode === m.id
-                              ? "#8b5cf6"
-                              : "transparent",
-                          color:
-                            lyricsSplitMode === m.id ? "#ffffff" : "#94a3b8",
-                          transition: "all 0.12s",
-                        }}
-                      >
-                        {m.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              </div>
-
-              {/* Slide Cards Grid */}
-              <div
-                style={{
-                  flex: 1,
-                  overflowY: "auto",
-                  padding: "20px",
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-                  gap: "14px",
-                  alignContent: "start",
-                }}
-              >
-                {lyricSlides.length === 0 ? (
-                  <div
-                    style={{
-                      gridColumn: "1 / -1",
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      minHeight: "260px",
-                      color: "#64748b",
-                      textAlign: "center",
-                    }}
-                  >
-                    <Music
-                      size={42}
-                      color="#334155"
-                      style={{ marginBottom: "12px" }}
-                    />
-                    <div
-                      style={{
-                        fontSize: "14px",
-                        fontWeight: 700,
-                        color: "#94a3b8",
-                        marginBottom: "6px",
-                      }}
-                    >
-                      No Lyric Slides Available
-                    </div>
-                    <div
-                      style={{
-                        fontSize: "12px",
-                        maxWidth: "320px",
-                        marginBottom: "14px",
-                        lineHeight: 1.5,
-                      }}
-                    >
-                      Select a song from the library on the left, search online,
-                      or paste your lyrics manually to generate presentation
-                      slides.
-                    </div>
-                    <button
-                      onClick={handleOpenAddSong}
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        gap: "6px",
-                        padding: "8px 18px",
-                        borderRadius: "8px",
-                        background:
-                          "linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)",
-                        border: "none",
-                        color: "#ffffff",
-                        fontSize: "12px",
-                        fontWeight: 800,
-                        cursor: "pointer",
-                        boxShadow: "0 0 16px rgba(139, 92, 246, 0.4)",
-                      }}
-                      title="Paste lyrics and add a song manually"
-                    >
-                      <Plus size={14} />
-                      <span>Add Song to Song Bank</span>
-                    </button>
-                  </div>
-                ) : (
-                  lyricSlides.map((slideText, idx) => {
-                    const isSelected = selectedLyricSlideIndex === idx;
-                    const isLive =
-                      state.lines[state.cur] === slideText &&
-                      state.category === "song" &&
-                      !state.liveState.isClearText &&
-                      !state.liveState.isBlackout;
-
-                    return (
-                      <div
-                        key={idx}
-                        onClick={() => {
-                          setSelectedLyricSlideIndex(idx);
-                          const isSongLive =
-                            state.category === "song" &&
-                            state.title?.toLowerCase() ===
-                              selectedSong?.trackName.toLowerCase();
-                          if (isSongLive) {
-                            onJumpTo(idx);
-                            if (state.liveState.isClearText) {
-                              onUpdateLiveState({ isClearText: false });
-                            }
-                          }
-                        }}
-                        onDoubleClick={() => {
-                          setSelectedLyricSlideIndex(idx);
-                          handleGoLive(idx);
-                        }}
-                        style={{
-                          background: isLive
-                            ? "radial-gradient(ellipse at top left, rgba(239, 68, 68, 0.22) 0%, rgba(15, 23, 42, 0.95) 100%)"
-                            : isSelected
-                              ? "radial-gradient(ellipse at top left, rgba(139, 92, 246, 0.25) 0%, rgba(15, 23, 42, 0.9) 100%)"
-                              : "rgba(15, 23, 42, 0.75)",
-                          border: isLive
-                            ? "2px solid #ef4444"
-                            : isSelected
-                              ? "2px solid #a78bfa"
-                              : "1px solid rgba(255, 255, 255, 0.08)",
-                          borderRadius: "12px",
-                          padding: "14px 16px",
-                          cursor: "pointer",
-                          display: "flex",
-                          flexDirection: "column",
-                          justifyContent: "space-between",
-                          minHeight: "140px",
-                          boxShadow: isLive
-                            ? "0 0 25px rgba(239, 68, 68, 0.4), inset 0 0 20px rgba(239, 68, 68, 0.1)"
-                            : isSelected
-                              ? "0 0 20px rgba(139, 92, 246, 0.3)"
-                              : "0 4px 12px rgba(0, 0, 0, 0.3)",
-                          transition: "all 0.15s ease",
-                          position: "relative",
-                        }}
-                      >
-                        {/* Slide Card Header */}
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            marginBottom: "10px",
-                            paddingBottom: "8px",
-                            borderBottom: "1px solid rgba(255, 255, 255, 0.06)",
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "6px",
-                            }}
-                          >
-                            <span
-                              style={{
-                                fontSize: "11px",
-                                fontWeight: 900,
-                                color: isLive
-                                  ? "#f87171"
-                                  : isSelected
-                                    ? "#c084fc"
-                                    : "#94a3b8",
-                                letterSpacing: "0.04em",
-                              }}
-                            >
-                              SLIDE #{idx + 1}
-                            </span>
-                          </div>
-
-                          {isLive ? (
-                            <span
-                              style={{
-                                display: "flex",
-                                alignItems: "center",
-                                gap: "4px",
-                                background: "#ef4444",
-                                color: "#ffffff",
-                                fontSize: "10px",
-                                fontWeight: 900,
-                                padding: "2px 7px",
-                                borderRadius: "4px",
-                                letterSpacing: "0.04em",
-                                boxShadow: "0 0 10px rgba(239, 68, 68, 0.8)",
-                              }}
-                            >
-                              <Radio size={10} /> LIVE ON AIR
-                            </span>
-                          ) : isSelected ? (
-                            <span
-                              style={{
-                                fontSize: "10px",
-                                fontWeight: 800,
-                                color: "#a78bfa",
-                                background: "rgba(139, 92, 246, 0.15)",
-                                padding: "2px 6px",
-                                borderRadius: "4px",
-                              }}
-                            >
-                              SELECTED
-                            </span>
-                          ) : null}
-                        </div>
-
-                        {/* Slide Lyrics Content */}
-                        <div
-                          style={{
-                            fontFamily:
-                              state.theme.fontFamily ||
-                              "Montserrat, sans-serif",
-                            fontSize: "13px",
-                            fontWeight: 600,
-                            lineHeight: 1.5,
-                            color: "#ffffff",
-                            whiteSpace: "pre-line",
-                            overflow: "hidden",
-                            display: "-webkit-box",
-                            WebkitLineClamp: 5,
-                            WebkitBoxOrient: "vertical",
-                            textShadow: "0 1px 3px rgba(0, 0, 0, 0.8)",
-                          }}
-                        >
-                          {slideText}
-                        </div>
-
-                        {/* Slide Card Footer */}
-                        <div
-                          style={{
-                            marginTop: "12px",
-                            paddingTop: "8px",
-                            borderTop: "1px solid rgba(255, 255, 255, 0.05)",
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                          }}
-                        >
-                          <span style={{ fontSize: "10px", color: "#64748b" }}>
-                            Double-click to project
-                          </span>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setSelectedLyricSlideIndex(idx);
-                              handleGoLive(idx);
-                            }}
-                            style={{
-                              padding: "2px 7px",
-                              borderRadius: "4px",
-                              background: isLive
-                                ? "rgba(239, 68, 68, 0.2)"
-                                : "rgba(255, 255, 255, 0.06)",
-                              border: isLive
-                                ? "1px solid #ef4444"
-                                : "1px solid rgba(255, 255, 255, 0.1)",
-                              color: isLive ? "#f87171" : "#cbd5e1",
-                              fontSize: "9px",
-                              fontWeight: 700,
-                              cursor: "pointer",
-                            }}
-                          >
-                            {isLive ? "On Screen" : "Project Now"}
-                          </button>
-                        </div>
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            </div>
-          </>
-        ) : (
-          <>
-            {/* PANEL 1: BOOKS (66) */}
-            <div
-              style={{
-                width: "240px",
-                flexShrink: 0,
-                borderRight: "1px solid rgba(255, 255, 255, 0.08)",
-                display: "flex",
-                flexDirection: "column",
-                background: "rgba(15, 23, 42, 0.5)",
-              }}
-            >
-              {/* Books Header with Testament Filter Tabs */}
-              <div
-                style={{
-                  padding: "10px 12px",
-                  borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "8px",
-                }}
-              >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: "11px",
-                      fontWeight: 800,
-                      color: "#38bdf8",
-                      textTransform: "uppercase",
-                    }}
-                  >
-                    1. BIBLE BOOKS ({filteredBooks.length})
-                  </span>
-                </div>
-
-                {/* OT / NT Tabs */}
-                <div style={{ display: "flex", gap: "4px" }}>
-                  {(["ALL", "OT", "NT"] as const).map((t) => (
-                    <button
-                      key={t}
-                      onClick={() => setTestamentFilter(t)}
-                      style={{
-                        flex: 1,
-                        padding: "4px 0",
-                        borderRadius: "4px",
-                        fontSize: "10px",
-                        fontWeight: 800,
-                        border: "none",
-                        cursor: "pointer",
-                        background:
-                          testamentFilter === t
-                            ? "#38bdf8"
-                            : "rgba(255, 255, 255, 0.05)",
-                        color: testamentFilter === t ? "#000000" : "#94a3b8",
-                      }}
-                    >
-                      {t}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Book text filter */}
-                <input
-                  type="text"
-                  placeholder="Filter books..."
-                  value={bookSearchText}
-                  onChange={(e) => setBookSearchText(e.target.value)}
-                  style={{
-                    width: "100%",
-                    padding: "6px 10px",
-                    background: "rgba(0, 0, 0, 0.3)",
-                    border: "1px solid rgba(255, 255, 255, 0.1)",
-                    borderRadius: "6px",
-                    color: "#ffffff",
-                    fontSize: "11px",
-                    outline: "none",
-                    boxSizing: "border-box",
-                  }}
+                  onPrevSlide={handlePrevSlide}
+                  onNextSlide={handleNextSlide}
+                  onGoLive={handleGoLive}
+                  onJumpTo={onJumpTo}
+                  onUpdateLiveState={onUpdateLiveState}
+                  onOpenAddSong={handleOpenAddSong}
                 />
-              </div>
+              </>
+            ) : (
+              <>
+                <V2ScriptureNavigator
+                  testamentFilter={testamentFilter}
+                  setTestamentFilter={setTestamentFilter}
+                  bookSearchText={bookSearchText}
+                  setBookSearchText={setBookSearchText}
+                  filteredBooks={filteredBooks}
+                  selectedBook={selectedBook}
+                  selectedChapter={selectedChapter}
+                  selectedVerseNumber={selectedVerseNumber}
+                  scriptureResult={scriptureResult}
+                  onSelectBook={handleSelectBook}
+                  onSelectChapter={handleSelectChapter}
+                  onSelectVerse={handleSelectVerse}
+                />
+                <V2ScriptureSlideDeck
+                  scriptureResult={scriptureResult}
+                  searchQuery={searchQuery}
+                  selectedVersion={selectedVersion}
+                  generatedSlides={generatedSlides}
+                  selectedSlideIndex={selectedSlideIndex}
+                  setSelectedSlideIndex={setSelectedSlideIndex}
+                  state={state}
+                  onUpdateTheme={onUpdateTheme}
+                  onPrevSlide={handlePrevSlide}
+                  onNextSlide={handleNextSlide}
+                  onGoLive={handleGoLive}
+                  onJumpTo={onJumpTo}
+                />
+              </>
+            )}
 
-              {/* Book List Scrollable */}
-              <div style={{ flex: 1, overflowY: "auto", padding: "6px" }}>
-                {filteredBooks.map((book) => {
-                  const isSelected = selectedBook.name === book.name;
-                  return (
-                    <div
-                      key={book.id}
-                      onClick={() => handleSelectBook(book)}
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        padding: "8px 12px",
-                        borderRadius: "6px",
-                        marginBottom: "2px",
-                        cursor: "pointer",
-                        background: isSelected
-                          ? "rgba(56, 189, 248, 0.2)"
-                          : "transparent",
-                        border: isSelected
-                          ? "1px solid #38bdf8"
-                          : "1px solid transparent",
-                        color: isSelected ? "#38bdf8" : "#e2e8f0",
-                        fontSize: "12px",
-                        fontWeight: isSelected ? 800 : 500,
-                        transition: "all 0.1s",
-                      }}
-                    >
-                      <span>{book.name}</span>
-                      <span
-                        style={{
-                          fontSize: "10px",
-                          color: isSelected ? "#38bdf8" : "#64748b",
-                          background: "rgba(255, 255, 255, 0.05)",
-                          padding: "1px 6px",
-                          borderRadius: "4px",
-                        }}
-                      >
-                        {book.chapters} ch
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* PANEL 2: CHAPTERS (Grid) */}
-            <div
-              style={{
-                width: "180px",
-                flexShrink: 0,
-                borderRight: "1px solid rgba(255, 255, 255, 0.08)",
-                display: "flex",
-                flexDirection: "column",
-                background: "rgba(15, 23, 42, 0.4)",
-              }}
-            >
-              <div
-                style={{
-                  padding: "10px 12px",
-                  borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "4px",
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: "11px",
-                    fontWeight: 800,
-                    color: "#38bdf8",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  2. CHAPTERS
-                </span>
-                <span
-                  style={{
-                    fontSize: "11px",
-                    color: "#94a3b8",
-                    fontWeight: 600,
-                  }}
-                >
-                  {selectedBook.name} ({selectedBook.chapters})
-                </span>
-              </div>
-
-              <div
-                style={{
-                  flex: 1,
-                  overflowY: "auto",
-                  padding: "10px",
-                  display: "grid",
-                  gridTemplateColumns: "repeat(3, 1fr)",
-                  gap: "6px",
-                  alignContent: "start",
-                }}
-              >
-                {Array.from(
-                  { length: selectedBook.chapters },
-                  (_, i) => i + 1,
-                ).map((ch) => {
-                  const isSelected = selectedChapter === ch;
-                  return (
-                    <button
-                      key={ch}
-                      onClick={() => handleSelectChapter(ch)}
-                      style={{
-                        padding: "8px 0",
-                        borderRadius: "6px",
-                        background: isSelected
-                          ? "#38bdf8"
-                          : "rgba(255, 255, 255, 0.05)",
-                        border: isSelected
-                          ? "1px solid #38bdf8"
-                          : "1px solid rgba(255, 255, 255, 0.08)",
-                        color: isSelected ? "#000000" : "#e2e8f0",
-                        fontSize: "12px",
-                        fontWeight: 800,
-                        cursor: "pointer",
-                        transition: "all 0.1s",
-                      }}
-                    >
-                      {ch}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* PANEL 3: VERSES (Grid) */}
-            <div
-              style={{
-                width: "180px",
-                flexShrink: 0,
-                borderRight: "1px solid rgba(255, 255, 255, 0.08)",
-                display: "flex",
-                flexDirection: "column",
-                background: "rgba(15, 23, 42, 0.3)",
-              }}
-            >
-              <div
-                style={{
-                  padding: "10px 12px",
-                  borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "4px",
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: "11px",
-                    fontWeight: 800,
-                    color: "#38bdf8",
-                    textTransform: "uppercase",
-                  }}
-                >
-                  3. VERSES
-                </span>
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                  }}
-                >
-                  <span
-                    style={{
-                      fontSize: "11px",
-                      color: "#94a3b8",
-                      fontWeight: 600,
-                    }}
-                  >
-                    {selectedChapter
-                      ? `Ch. ${selectedChapter} (${scriptureResult?.totalVerses || "..."})`
-                      : "Select a chapter"}
-                  </span>
-                  <button
-                    onClick={() => handleSelectVerse(null)}
-                    disabled={!selectedChapter}
-                    style={{
-                      fontSize: "9px",
-                      fontWeight: 800,
-                      padding: "2px 6px",
-                      borderRadius: "4px",
-                      background:
-                        selectedChapter && selectedVerseNumber === null
-                          ? "#38bdf8"
-                          : "rgba(255, 255, 255, 0.06)",
-                      color:
-                        selectedChapter && selectedVerseNumber === null
-                          ? "#000000"
-                          : selectedChapter
-                          ? "#38bdf8"
-                          : "#64748b",
-                      border: "none",
-                      cursor: selectedChapter ? "pointer" : "default",
-                      opacity: selectedChapter ? 1 : 0.5,
-                    }}
-                  >
-                    ALL
-                  </button>
-                </div>
-              </div>
-
-              <div
-                id="quickdeck-verses-container"
-                style={{
-                  flex: 1,
-                  overflowY: "auto",
-                  padding: "10px",
-                  display: "grid",
-                  gridTemplateColumns: "repeat(3, 1fr)",
-                  gap: "6px",
-                  alignContent: "start",
-                }}
-              >
-                {!selectedChapter ? (
-                  <div
-                    style={{
-                      gridColumn: "1 / -1",
-                      padding: "24px 8px",
-                      textAlign: "center",
-                      color: "#64748b",
-                      fontSize: "11px",
-                      fontWeight: 600,
-                    }}
-                  >
-                    Select a chapter to choose verse
-                  </div>
-                ) : scriptureResult &&
-                scriptureResult.verses &&
-                scriptureResult.verses.length > 0 ? (
-                  scriptureResult.verses.map((v) => {
-                    const isSelected = selectedVerseNumber === v.verse;
-                    return (
-                      <button
-                        key={v.verse}
-                        id={`quickdeck-verse-${v.verse}`}
-                        onClick={() => handleSelectVerse(v.verse)}
-                        style={{
-                          padding: "8px 0",
-                          borderRadius: "6px",
-                          background: isSelected
-                            ? "#38bdf8"
-                            : "rgba(255, 255, 255, 0.05)",
-                          border: isSelected
-                            ? "1px solid #38bdf8"
-                            : "1px solid rgba(255, 255, 255, 0.08)",
-                          color: isSelected ? "#000000" : "#e2e8f0",
-                          fontSize: "12px",
-                          fontWeight: 800,
-                          cursor: "pointer",
-                          transition: "all 0.1s",
-                        }}
-                      >
-                        {v.verse}
-                      </button>
-                    );
-                  })
-                ) : (
-                  Array.from({ length: 25 }, (_, i) => i + 1).map((v) => (
-                    <button
-                      key={v}
-                      onClick={() => handleSelectVerse(v)}
-                      style={{
-                        padding: "8px 0",
-                        borderRadius: "6px",
-                        background: "rgba(255, 255, 255, 0.03)",
-                        border: "1px solid rgba(255, 255, 255, 0.06)",
-                        color: "#64748b",
-                        fontSize: "12px",
-                        fontWeight: 700,
-                        cursor: "pointer",
-                      }}
-                    >
-                      {v}
-                    </button>
-                  ))
-                )}
-              </div>
-            </div>
-
-            {/* PANEL 4: SCRIPTURE SLIDE DECK (Center Stage) */}
-            <div
-              style={{
-                flex: 1,
-                display: "flex",
-                flexDirection: "column",
-                overflow: "hidden",
-                background: "#090d16",
-              }}
-            >
-              {/* Slide Deck Sub-header */}
-              <div
-                style={{
-                  padding: "10px 20px",
-                  borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  background: "rgba(15, 23, 42, 0.6)",
-                }}
-              >
-                <div>
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "8px",
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontSize: "15px",
-                        fontWeight: 800,
-                        color: "#ffffff",
-                      }}
-                    >
-                      {scriptureResult?.reference || searchQuery}
-                    </span>
-                    <span
-                      style={{
-                        fontSize: "11px",
-                        fontWeight: 800,
-                        padding: "2px 8px",
-                        borderRadius: "4px",
-                        background: "rgba(56, 189, 248, 0.15)",
-                        color: "#38bdf8",
-                      }}
-                    >
-                      {scriptureResult?.version || selectedVersion}
-                    </span>
-                  </div>
-                  <div style={{ fontSize: "11px", color: "#94a3b8" }}>
-                    {generatedSlides.length} Slide
-                    {generatedSlides.length > 1 ? "s" : ""} • Click card to
-                    preview, double-click to project live
-                  </div>
-                </div>
-
-                {/* Slide Sub-Header Controls: Font Family, Text Size & Slide Navigation */}
-                <div
-                  style={{ display: "flex", alignItems: "center", gap: "10px" }}
-                >
-                  {/* Quick Font Family Selector */}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "5px",
-                    }}
-                  >
-                    <Type size={13} color="#38bdf8" />
-                    <select
-                      value={state.theme.fontFamily || "Montserrat, sans-serif"}
-                      onChange={(e) =>
-                        onUpdateTheme?.({ fontFamily: e.target.value })
-                      }
-                      style={{
-                        background: "rgba(0, 0, 0, 0.45)",
-                        border: "1px solid rgba(255, 255, 255, 0.12)",
-                        borderRadius: "6px",
-                        color: "#ffffff",
-                        fontSize: "11px",
-                        fontWeight: 700,
-                        padding: "5px 8px",
-                        outline: "none",
-                        cursor: "pointer",
-                      }}
-                      title="Select scripture font family for live screen"
-                    >
-                      {FONT_FAMILIES.map((f) => (
-                        <option
-                          key={f.value}
-                          value={f.value}
-                          style={{ background: "#0f172a", color: "#ffffff" }}
-                        >
-                          {f.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  {/* Quick Text Font Size Controls */}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "4px",
-                      background: "rgba(0, 0, 0, 0.45)",
-                      padding: "3px 8px",
-                      borderRadius: "6px",
-                      border: "1px solid rgba(255, 255, 255, 0.12)",
-                    }}
-                    title="Adjust live scripture font size"
-                  >
-                    <span
-                      style={{
-                        fontSize: "10px",
-                        fontWeight: 800,
-                        color: "#94a3b8",
-                      }}
-                    >
-                      Text:
-                    </span>
-                    <button
-                      onClick={() => {
-                        const cur = state.theme.fontSize || 44;
-                        const next = Math.max(24, cur - 4);
-                        onUpdateTheme?.({ fontSize: next });
-                      }}
-                      style={{
-                        width: "18px",
-                        height: "18px",
-                        borderRadius: "3px",
-                        background: "rgba(255, 255, 255, 0.08)",
-                        border: "none",
-                        color: "#ffffff",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                      title="Decrease text font size (-4px)"
-                    >
-                      <Minus size={10} />
-                    </button>
-                    <span
-                      style={{
-                        fontSize: "11px",
-                        fontWeight: 800,
-                        color: "#f59e0b",
-                        minWidth: "34px",
-                        textAlign: "center",
-                        fontVariantNumeric: "tabular-nums",
-                      }}
-                    >
-                      {state.theme.fontSize || 44}px
-                    </span>
-                    <button
-                      onClick={() => {
-                        const cur = state.theme.fontSize || 44;
-                        const next = Math.min(96, cur + 4);
-                        onUpdateTheme?.({ fontSize: next });
-                      }}
-                      style={{
-                        width: "18px",
-                        height: "18px",
-                        borderRadius: "3px",
-                        background: "rgba(255, 255, 255, 0.08)",
-                        border: "none",
-                        color: "#ffffff",
-                        cursor: "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                      }}
-                      title="Increase text font size (+4px)"
-                    >
-                      <Plus size={10} />
-                    </button>
-                  </div>
-
-                  {/* Slide Navigation */}
-                  <div
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: "2px",
-                    }}
-                  >
-                    <button
-                      onClick={handlePrevSlide}
-                      disabled={selectedSlideIndex <= 0}
-                      style={{
-                        padding: "6px 10px",
-                        borderRadius: "6px 0 0 6px",
-                        background: "rgba(255, 255, 255, 0.06)",
-                        border: "1px solid rgba(255, 255, 255, 0.12)",
-                        color: selectedSlideIndex <= 0 ? "#475569" : "#ffffff",
-                        cursor:
-                          selectedSlideIndex <= 0 ? "not-allowed" : "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                      }}
-                      title="Previous slide (Left Arrow)"
-                    >
-                      <ChevronLeft size={15} />
-                    </button>
-                    <div
-                      style={{
-                        padding: "6px 10px",
-                        background: "rgba(0, 0, 0, 0.3)",
-                        borderTop: "1px solid rgba(255, 255, 255, 0.12)",
-                        borderBottom: "1px solid rgba(255, 255, 255, 0.12)",
-                        fontSize: "11px",
-                        fontWeight: 800,
-                        color: "#38bdf8",
-                        minWidth: "55px",
-                        textAlign: "center",
-                      }}
-                    >
-                      {selectedSlideIndex + 1} / {generatedSlides.length || 1}
-                    </div>
-                    <button
-                      onClick={handleNextSlide}
-                      disabled={
-                        selectedSlideIndex >= generatedSlides.length - 1
-                      }
-                      style={{
-                        padding: "6px 10px",
-                        borderRadius: "0 6px 6px 0",
-                        background: "rgba(255, 255, 255, 0.06)",
-                        border: "1px solid rgba(255, 255, 255, 0.12)",
-                        color:
-                          selectedSlideIndex >= generatedSlides.length - 1
-                            ? "#475569"
-                            : "#ffffff",
-                        cursor:
-                          selectedSlideIndex >= generatedSlides.length - 1
-                            ? "not-allowed"
-                            : "pointer",
-                        display: "flex",
-                        alignItems: "center",
-                      }}
-                      title="Next slide (Right Arrow / Space)"
-                    >
-                      <ChevronRight size={15} />
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Generated Slide Cards Grid */}
-              <div
-                style={{
-                  flex: 1,
-                  overflowY: "auto",
-                  padding: "20px",
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
-                  gap: "14px",
-                  alignContent: "start",
-                }}
-              >
-                {generatedSlides.map((slideText, idx) => {
-                  const isSelected = idx === selectedSlideIndex;
-                  const isCurrentlyLiveOnDisplay =
-                    state.category === "scripture" &&
-                    state.cur === idx &&
-                    state.lines[idx] === slideText;
-
-                  return (
-                    <div
-                      key={idx}
-                      onClick={() => {
-                        setSelectedSlideIndex(idx);
-                        if (state.category === "scripture") {
-                          handleGoLive(idx);
-                        } else {
-                          onJumpTo(idx);
-                        }
-                      }}
-                      onDoubleClick={() => handleGoLive(idx)}
-                      style={{
-                        background: isCurrentlyLiveOnDisplay
-                          ? "rgba(239, 68, 68, 0.15)"
-                          : isSelected
-                            ? "rgba(56, 189, 248, 0.12)"
-                            : "rgba(15, 23, 42, 0.7)",
-                        border: isCurrentlyLiveOnDisplay
-                          ? "2px solid #ef4444"
-                          : isSelected
-                            ? "2px solid #38bdf8"
-                            : "1px solid rgba(255, 255, 255, 0.08)",
-                        borderRadius: "12px",
-                        padding: "16px",
-                        display: "flex",
-                        flexDirection: "column",
-                        justifyContent: "space-between",
-                        minHeight: "130px",
-                        cursor: "pointer",
-                        boxShadow: isCurrentlyLiveOnDisplay
-                          ? "0 0 20px rgba(239, 68, 68, 0.35)"
-                          : isSelected
-                            ? "0 0 16px rgba(56, 189, 248, 0.25)"
-                            : "none",
-                        transition: "all 0.15s ease",
-                      }}
-                    >
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          marginBottom: "10px",
-                        }}
-                      >
-                        <span
-                          style={{
-                            fontSize: "11px",
-                            fontWeight: 800,
-                            color: isCurrentlyLiveOnDisplay
-                              ? "#ef4444"
-                              : isSelected
-                                ? "#38bdf8"
-                                : "#64748b",
-                          }}
-                        >
-                          SLIDE {idx + 1}
-                        </span>
-
-                        {isCurrentlyLiveOnDisplay ? (
-                          <span
-                            style={{
-                              fontSize: "10px",
-                              fontWeight: 800,
-                              padding: "2px 8px",
-                              borderRadius: "999px",
-                              background: "#ef4444",
-                              color: "#ffffff",
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "4px",
-                            }}
-                          >
-                            <Radio size={10} /> ON DISPLAY
-                          </span>
-                        ) : isSelected ? (
-                          <span
-                            style={{
-                              fontSize: "10px",
-                              fontWeight: 700,
-                              padding: "2px 6px",
-                              borderRadius: "4px",
-                              background: "rgba(56, 189, 248, 0.2)",
-                              color: "#38bdf8",
-                            }}
-                          >
-                            PREVIEW
-                          </span>
-                        ) : null}
-                      </div>
-
-                      <div
-                        style={{
-                          color: "#ffffff",
-                          fontSize: "13px",
-                          lineHeight: 1.5,
-                          fontWeight: 500,
-                          fontFamily:
-                            state.theme.fontFamily || "Montserrat, sans-serif",
-                          whiteSpace: "pre-line",
-                          overflow: "hidden",
-                          display: "-webkit-box",
-                          WebkitLineClamp: 4,
-                          WebkitBoxOrient: "vertical",
-                        }}
-                      >
-                        {slideText}
-                      </div>
-
-                      <div
-                        style={{
-                          marginTop: "10px",
-                          paddingTop: "8px",
-                          borderTop: "1px solid rgba(255, 255, 255, 0.06)",
-                          display: "flex",
-                          justifyContent: "flex-end",
-                        }}
-                      >
-                        <span style={{ fontSize: "10px", color: "#64748b" }}>
-                          Double-click to project
-                        </span>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          </>
-        )}
-
-        {/* PANEL 5: LIVE DISPLAY MONITOR (Mini Preview of DisplayView) */}
-        <div
-          style={{
-            width: "380px",
-            flexShrink: 0,
-            borderLeft: "1px solid rgba(255, 255, 255, 0.08)",
-            display: "flex",
-            flexDirection: "column",
-            background: "rgba(10, 15, 26, 0.85)",
-            padding: "16px",
-            gap: "14px",
-            overflowY: "auto",
-          }}
-        >
-          <div
-            style={{
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "space-between",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <Tv size={16} color="#38bdf8" />
-              <span
-                style={{
-                  fontSize: "12px",
-                  fontWeight: 800,
-                  color: "#ffffff",
-                  textTransform: "uppercase",
-                }}
-              >
-                Live Screen Output
-              </span>
-            </div>
-            <button
-              onClick={() =>
+            {/* Live Display Monitor */}
+            <V2PreviewMonitor
+              state={state}
+              activeTab={activeTab}
+              generatedSlides={generatedSlides}
+              selectedSlideIndex={selectedSlideIndex}
+              lyricSlides={lyricSlides}
+              selectedLyricSlideIndex={selectedLyricSlideIndex}
+              selectedSong={selectedSong}
+              scriptureResult={scriptureResult}
+              currentTimerSec={currentTimerSec}
+              formattedCountdown={formattedCountdown}
+              isOvertime={isOvertime}
+              isWarning={isWarning}
+              isCritical={isCritical}
+              now={now}
+              onOpenDisplay={() =>
                 openBorderlessWindow("/display", "easypresenter_display")
               }
-              style={{
-                fontSize: "11px",
-                padding: "3px 8px",
-                borderRadius: "6px",
-                background: "rgba(56, 189, 248, 0.15)",
-                border: "1px solid rgba(56, 189, 248, 0.3)",
-                color: "#38bdf8",
-                fontWeight: 700,
-                cursor: "pointer",
-                display: "flex",
-                alignItems: "center",
-                gap: "4px",
-              }}
-            >
-              <ExternalLink size={11} />
-              Popout
-            </button>
-          </div>
-
-          {/* 16:9 Mini Screen Monitor reproducing DisplayView */}
-          {(() => {
-            const activeLiveLine =
-              activeTab === "scripture" && state.category !== "scripture"
-                ? (generatedSlides[selectedSlideIndex] || state.lines[state.cur] || "")
-                : (state.lines[state.cur] ||
-                   (activeTab === "lyrics"
-                     ? lyricSlides[selectedLyricSlideIndex]
-                     : generatedSlides[selectedSlideIndex]) ||
-                   "");
-            const activeLiveSlidePayload = parseSlidePayload(activeLiveLine);
-            const isLiveMedia = activeLiveSlidePayload?.kind === "media";
-            const isLiveCoverMedia = isLiveMedia && activeLiveSlidePayload?.fitMode === "cover";
-
-            return (
-              <div
-                style={{
-                  width: "100%",
-                  aspectRatio: "16 / 9",
-                  background: state.liveState.isBlackout
-                    ? "#000000"
-                    : "radial-gradient(ellipse at center, #1e293b 0%, #0f172a 70%, #020617 100%)",
-                  borderRadius: "10px",
-                  border: "1.5px solid rgba(56, 189, 248, 0.35)",
-                  boxShadow:
-                    "0 10px 25px rgba(0, 0, 0, 0.7), inset 0 0 20px rgba(0, 0, 0, 0.8)",
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "space-between",
-                  padding: isLiveCoverMedia ? 0 : "12px 14px",
-                  position: "relative",
-                  overflow: "hidden",
-                }}
-              >
-                {/* Real Theme Background Layer in Quick Deck Live Monitor */}
-                <ThemeBackgroundLayer
-                  theme={state.theme}
-                  isBlackout={state.liveState.isBlackout}
-                />
-
-                {/* Top Bar on Screen: Cyan Countdown Timer + Underline (Left) & Real Clock (Right) */}
-                {!state.liveState.isBlackout && (
-                  <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      alignItems: "flex-start",
-                      position: "relative",
-                      zIndex: 3,
-                      borderBottom:
-                        isLiveCoverMedia || state.liveState.isClearText || !state.lines[state.cur]
-                          ? "none"
-                          : "1px solid rgba(255, 255, 255, 0.08)",
-                      padding: isLiveCoverMedia ? "10px 14px 4px 14px" : "0 0 4px 0",
-                      width: "100%",
-                      boxSizing: "border-box",
-                    }}
-                  >
-                    {/* Top Left Countdown Timer - only shown when text is active */}
-                    {state.timerState.showOnDisplay &&
-                    (state.timerState.status !== "idle" ||
-                      currentTimerSec > 0 ||
-                      state.timerState.durationSec > 0) &&
-                    !state.liveState.isClearText &&
-                    Boolean(state.lines[state.cur]) ? (
-                      <div style={{ display: "flex", flexDirection: "column" }}>
-                        <span
-                          style={{
-                            fontFamily: "Montserrat, sans-serif",
-                            fontSize: `${Math.round(18 * Math.max(0.6, Math.min(2.0, (state.timerState.fontSizeScale || 100) / 100)))}px`,
-                            fontWeight: 900,
-                            color: isOvertime
-                              ? "#ef4444"
-                              : isCritical
-                                ? "#f97316"
-                                : isWarning
-                                  ? "#f59e0b"
-                                  : "#60a5fa",
-                            lineHeight: 1,
-                          }}
-                        >
-                          {formattedCountdown}
-                        </span>
-                        <div
-                          style={{
-                            height: "2px",
-                            width: "100%",
-                            background: isOvertime ? "#ef4444" : "#60a5fa",
-                            marginTop: "2px",
-                          }}
-                        />
-                      </div>
-                    ) : (
-                      <div />
-                    )}
-
-                    {/* Top Right Digital Clock */}
-                    <div style={{ textAlign: "right" }}>
-                      <span
-                        style={{
-                          fontFamily: "Montserrat, sans-serif",
-                          fontSize: "11px",
-                          fontWeight: 800,
-                          color: "#f59e0b",
-                        }}
-                      >
-                        {new Date(now).toLocaleTimeString("en-US", {
-                          hour: "2-digit",
-                          minute: "2-digit",
-                        })}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-            {/* Center: Live Scripture Text OR Centered Hero Timer when text cleared */}
-            {!state.liveState.isBlackout &&
-              (state.liveState.isClearText || !state.lines[state.cur] ? (
-                /* Hero Centered Timer in Middle Space of Mini Monitor */
-                state.timerState.showOnDisplay && (
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      textAlign: "center",
-                      padding: "8px 4px",
-                      margin: "auto 0",
-                    }}
-                  >
-                    <span
-                      style={{
-                        fontFamily: "Montserrat, sans-serif",
-                        fontSize: `${Math.round(32 * Math.max(0.6, Math.min(2.0, (state.timerState.fontSizeScale || 100) / 100)))}px`,
-                        fontWeight: 900,
-                        color: isOvertime
-                          ? "#ef4444"
-                          : isCritical
-                            ? "#f97316"
-                            : isWarning
-                              ? "#f59e0b"
-                              : "#60a5fa",
-                        lineHeight: 1,
-                        letterSpacing: "-0.02em",
-                        textShadow: isOvertime
-                          ? "0 0 15px rgba(239, 68, 68, 0.8)"
-                          : "0 0 15px rgba(96, 165, 250, 0.5)",
-                      }}
-                    >
-                      {formattedCountdown}
-                    </span>
-                    <div
-                      style={{
-                        height: "2.5px",
-                        width: `${Math.round(45 * Math.max(0.6, Math.min(2.0, (state.timerState.fontSizeScale || 100) / 100)))}px`,
-                        background: isOvertime ? "#ef4444" : "#60a5fa",
-                        marginTop: "4px",
-                        borderRadius: "2px",
-                        boxShadow: isOvertime
-                          ? "0 0 8px rgba(239, 68, 68, 0.8)"
-                          : "0 0 8px rgba(96, 165, 250, 0.6)",
-                      }}
-                    />
-                  </div>
-                )
-              ) : (
-                /* Live Scripture / Worship Slide Text */
-                <div
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: (state.category === "scripture" || activeTab === "scripture")
-                      ? (state.theme.scripture?.textAlign === 'left' ? 'flex-start' : state.theme.scripture?.textAlign === 'right' ? 'flex-end' : 'center')
-                      : (state.theme.lyrics?.textAlign === 'left' ? 'flex-start' : state.theme.lyrics?.textAlign === 'right' ? 'flex-end' : 'center'),
-                    justifyContent: "center",
-                    textAlign: (state.category === "scripture" || activeTab === "scripture")
-                      ? (state.theme.scripture?.textAlign || 'center')
-                      : (state.theme.lyrics?.textAlign || 'center'),
-                    width: "100%",
-                    flex: isLiveCoverMedia ? undefined : 1,
-                    minHeight: 0,
-                    padding: isLiveCoverMedia ? 0 : "4px",
-                    overflow: "hidden",
-                    position: isLiveCoverMedia ? "absolute" : "relative",
-                    inset: isLiveCoverMedia ? 0 : undefined,
-                    zIndex: isLiveCoverMedia ? 1 : 2,
-                  }}
-                >
-                  {(() => {
-                    const rawLine =
-                      activeTab === "scripture" && state.category !== "scripture"
-                        ? (generatedSlides[selectedSlideIndex] || state.lines[state.cur] || "No content active")
-                        : (state.lines[state.cur] ||
-                           (activeTab === "lyrics"
-                             ? lyricSlides[selectedLyricSlideIndex]
-                             : generatedSlides[selectedSlideIndex]) ||
-                           "No content active");
-                    
-                    const slidePayload = parseSlidePayload(rawLine);
-                    if (slidePayload?.kind === 'media') {
-                      const isCover = slidePayload.fitMode === 'cover';
-                      return (
-                        <div
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            minHeight: isCover ? undefined : "130px",
-                            position: isCover ? "absolute" : "relative",
-                            inset: isCover ? 0 : undefined,
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            overflow: "hidden",
-                            borderRadius: isCover ? "0px" : "6px",
-                            background: "#000000",
-                            zIndex: isCover ? 1 : 2,
-                            flex: isCover ? undefined : 1,
-                          }}
-                        >
-                          {slidePayload.mediaType === 'video' ? (
-                            <video
-                              key={slidePayload.mediaUrl}
-                              src={slidePayload.mediaUrl}
-                              autoPlay
-                              loop
-                              muted
-                              playsInline
-                              style={{
-                                width: "100%",
-                                height: "100%",
-                                objectFit: isCover ? "cover" : "contain",
-                                display: "block",
-                              }}
-                            />
-                          ) : (
-                            <img
-                              key={slidePayload.mediaUrl}
-                              src={slidePayload.mediaUrl}
-                              alt="Media Projection"
-                              style={{
-                                width: "100%",
-                                height: "100%",
-                                objectFit: isCover ? "cover" : "contain",
-                                display: "block",
-                              }}
-                            />
-                          )}
-                          <div
-                            style={{
-                              position: "absolute",
-                              bottom: "6px",
-                              right: "8px",
-                              background: "rgba(0, 0, 0, 0.75)",
-                              color: "#38bdf8",
-                              fontSize: "9px",
-                              fontWeight: 800,
-                              padding: "2px 6px",
-                              borderRadius: "4px",
-                              letterSpacing: "0.06em",
-                              textTransform: "uppercase",
-                              backdropFilter: "blur(4px)",
-                              border: "1px solid rgba(56, 189, 248, 0.3)",
-                              zIndex: 5,
-                            }}
-                          >
-                            {slidePayload.mediaType === 'video' ? '🎬 Live Video' : '🖼️ Live Image'}
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    if (slidePayload?.kind === 'presentation') {
-                      return (
-                        <div
-                          style={{
-                            width: "100%",
-                            height: "100%",
-                            minHeight: "120px",
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            textAlign: "center",
-                            padding: "8px",
-                            background: "rgba(15, 23, 42, 0.8)",
-                            borderRadius: "6px",
-                            border: "1px solid rgba(255, 255, 255, 0.12)",
-                          }}
-                        >
-                          <span
-                            style={{
-                              fontSize: "10px",
-                              fontWeight: 800,
-                              color: slidePayload.docType === 'pptx' ? '#fb923c' : '#38bdf8',
-                              letterSpacing: "0.06em",
-                              textTransform: "uppercase",
-                              marginBottom: "4px",
-                            }}
-                          >
-                            {(slidePayload.docType || "slide").toUpperCase()} {slidePayload.docType === 'pptx' ? 'Slide' : 'Page'} {slidePayload.pageNumber || 1} / {slidePayload.totalPages || 1}
-                          </span>
-                          {slidePayload.heading && (
-                            <span
-                              style={{
-                                fontSize: "12px",
-                                fontWeight: 700,
-                                color: "#f8fafc",
-                                marginBottom: "4px",
-                              }}
-                            >
-                              {slidePayload.heading}
-                            </span>
-                          )}
-                          {slidePayload.body && (
-                            <span
-                              style={{
-                                fontSize: "10px",
-                                color: "#cbd5e1",
-                                lineHeight: 1.3,
-                                maxHeight: "55px",
-                                overflow: "hidden",
-                                display: "-webkit-box",
-                                WebkitLineClamp: 3,
-                                WebkitBoxOrient: "vertical",
-                              }}
-                            >
-                              {slidePayload.body}
-                            </span>
-                          )}
-                        </div>
-                      );
-                    }
-
-                    const rawText = getSlideReadableText(rawLine);
-
-                    const isScripture = (state.category === "scripture" || activeTab === "scripture");
-
-                    if (!isScripture) {
-                      return (
-                        <div
-                          style={{
-                            color: state.theme.lyrics?.bodyFontColor || state.theme.textColor || "#ffffff",
-                            fontSize: `${Math.round(13 * Math.max(0.7, Math.min(1.8, (state.theme.lyrics?.bodyFontSize || 48) / 48)))}px`,
-                            fontWeight: state.theme.lyrics?.bodyFontStyle?.includes('bold') ? 800 : 600,
-                            fontStyle: state.theme.lyrics?.bodyFontStyle?.includes('italic') ? 'italic' : 'normal',
-                            lineHeight: 1.4,
-                            fontFamily: state.theme.lyrics?.bodyFontFamily || state.theme.fontFamily || "Montserrat, sans-serif",
-                            textShadow: "0 2px 8px rgba(0, 0, 0, 0.9)",
-                            whiteSpace: "pre-line",
-                          }}
-                        >
-                          {rawText}
-                        </div>
-                      );
-                    }
-
-                    // Scripture: Parse title and body
-                    const parts = rawText.split(/\n\s*\n/);
-                    let title = state.title || scriptureResult?.reference || "";
-                    let body = rawText;
-
-                    if (parts.length > 1) {
-                      const first = parts[0].trim();
-                      const last = parts[parts.length - 1].trim();
-                      const looksLikeRef = (s: string) =>
-                        /^[1-3]?\s*[A-Za-z\s]+\s+\d+(?::\d+(?:-\d+)?)?(?:\s*\([A-Z0-9\s]+\))?$/i.test(s) ||
-                        /^[1-3]?\s*[A-Za-z\s]+\s*\([A-Z0-9\s]+\)$/i.test(s) ||
-                        s.startsWith('—') ||
-                        s.startsWith('-');
-                      if (looksLikeRef(first) && first.length < 60) {
-                        title = first.replace(/^[—\-]\s*/, '').trim();
-                        body = parts.slice(1).join('\n\n').trim();
-                      } else if (looksLikeRef(last) && last.length < 60) {
-                        title = last.replace(/^[—\-]\s*/, '').trim();
-                        body = parts.slice(0, -1).join('\n\n').trim();
-                      }
-                    }
-                    body = body.replace(/^[“"']+|[”"']+$/g, '').trim();
-                    const showTitle = state.theme.scripture?.showTitle !== false;
-                    const isTitleBottom = state.theme.scripture?.titlePosition === 'bottom';
-                    const titleColor = state.theme.scripture?.titleFontColor || "#38bdf8";
-
-                    const titleEl = showTitle && title ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: isTitleBottom ? '0' : '4px', marginTop: isTitleBottom ? '4px' : '0' }}>
-                        <div style={{ width: '16px', height: '1px', background: 'rgba(255, 255, 255, 0.3)' }} />
-                        <span style={{
-                          fontSize: '9px',
-                          fontWeight: 800,
-                          color: titleColor,
-                          fontFamily: state.theme.scripture?.titleFontFamily || 'Montserrat, sans-serif',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.04em'
-                        }}>
-                          {title}
-                        </span>
-                        <div style={{ width: '16px', height: '1px', background: 'rgba(255, 255, 255, 0.3)' }} />
-                      </div>
-                    ) : null;
-
-                    return (
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '100%' }}>
-                        {!isTitleBottom && titleEl}
-                        <div
-                          style={{
-                            color: state.theme.scripture?.bodyFontColor || "#ffffff",
-                            fontSize: `${Math.round(13 * Math.max(0.7, Math.min(1.8, (state.theme.scripture?.bodyFontSize || 52) / 52)))}px`,
-                            fontWeight: state.theme.scripture?.bodyFontStyle?.includes('bold') ? 700 : 500,
-                            fontStyle: state.theme.scripture?.bodyFontStyle?.includes('italic') ? 'italic' : 'normal',
-                            lineHeight: 1.4,
-                            fontFamily: state.theme.scripture?.bodyFontFamily || state.theme.fontFamily || "Montserrat, sans-serif",
-                            textShadow: "0 2px 8px rgba(0, 0, 0, 0.9)",
-                            whiteSpace: "pre-line",
-                          }}
-                        >
-                          “{body}”
-                        </div>
-                        {isTitleBottom && titleEl}
-                      </div>
-                    );
-                  })()}
-                </div>
-              ))}
-
-            {/* Bottom Citation & Status */}
-            {!state.liveState.isBlackout && !isLiveCoverMedia && (
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  borderTop: "1px solid rgba(255, 255, 255, 0.08)",
-                  paddingTop: "4px",
-                  position: "relative",
-                  zIndex: 2,
-                }}
-              >
-                <span
-                  style={{
-                    fontSize: "9px",
-                    fontWeight: 800,
-                    color: activeTab === "lyrics" ? "#c084fc" : "#38bdf8",
-                  }}
-                >
-                  {activeTab === "lyrics"
-                    ? (selectedSong?.trackName || "Worship Lyrics")
-                    : "Scripture Live Feed"}
-                </span>
-                <span
-                  style={{ fontSize: "8px", color: "#64748b", fontWeight: 700 }}
-                >
-                  DISPLAYVIEW LIVE
-                </span>
-              </div>
-            )}
-          </div>
-        );
-      })()}
-
-          {/* Quick Help & Status Card */}
-          <div
-            style={{
-              background: "rgba(15, 23, 42, 0.5)",
-              border: "1px solid rgba(255, 255, 255, 0.08)",
-              borderRadius: "8px",
-              padding: "12px",
-              fontSize: "11px",
-              color: "#94a3b8",
-              lineHeight: 1.6,
-            }}
-          >
-            <div
-              style={{ fontWeight: 800, color: "#38bdf8", marginBottom: "4px" }}
-            >
-              ⚡ EASYPRESENTER V2 SHORTCUTS
-            </div>
-            <div>
-              • <strong>Enter</strong>: Go Live to Screen
-            </div>
-            <div>
-              • <strong>Space / Tab</strong>: Autocomplete Book & Chapter
-              (Auto-inserts :)
-            </div>
-            <div>
-              • <strong>Right Arrow / Space</strong> (on deck): Next Slide
-            </div>
-            <div>
-              • <strong>Left Arrow</strong> (on deck): Previous Slide
-            </div>
-            <div>
-              • <strong>Countdown Timer</strong>: Start/pause or pick presets
-              above
-            </div>
-          </div>
-        </div>
-      </main>
+            />
+          </main>
         </>
       )}
 
-      {/* ============================================================= */}
-      {/* GENERAL FORMATTING SETTINGS MODAL (SCRIPTURE & LYRICS TABS)  */}
-      {/* ============================================================= */}
+      {/* Formatting & Typography Settings Modal */}
       <FormatSettingsModal
         isOpen={showTypographyModal}
         onClose={() => setShowTypographyModal(false)}
@@ -6189,12 +1491,10 @@ export const V2Presenter: React.FC<V2PresenterProps> = ({
         initialTab={formatModalTab}
         activeCategory={state.category}
         sampleTitle={state.title}
-        sampleVerse={state.lines[state.cur] || ''}
+        sampleVerse={state.lines[state.cur] || ""}
       />
 
-      {/* ============================================================= */}
-      {/* SONG BANK MANUAL LYRIC ADD & EDIT MODAL                        */}
-      {/* ============================================================= */}
+      {/* Song Bank Manual Lyric Add & Edit Modal */}
       <SongBankEditorModal
         isOpen={isSongEditorOpen}
         onClose={() => setIsSongEditorOpen(false)}
