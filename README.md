@@ -108,3 +108,10 @@ The Studio Console includes:
 - Built-in rich library with Psalms, John 3:16, Philippians 4, Amazing Grace, Way Maker, and Great Is Thy Faithfulness.
 - Built-in Smart Parser: Paste new lyrics or verses and split into slides by single line or by stanzas (paragraphs).
 - Search filter by title, lyrics, or category.
+
+---
+
+## 📄 License
+
+This project is open source and available under the [MIT License](LICENSE.md).
+

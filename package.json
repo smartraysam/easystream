@@ -2,6 +2,7 @@
   "name": "easy-presenter",
   "version": "2.0.0",
   "description": "Modern EasyWorship-grade presentation & live broadcast system for church & vMix overlays",
+  "license": "MIT",
   "main": "server.js",
   "type": "module",
   "scripts": {
