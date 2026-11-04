@@ -153,6 +153,101 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
   >("scriptures");
 
   // -----------------------------------------------------------------
+  // Splitter & Scripture Table Vertical Drag Resizing State
+  // -----------------------------------------------------------------
+  const DEFAULT_UPPER_HEIGHT = 320;
+  const MIN_UPPER_HEIGHT = 160;
+
+  const [upperTierHeight, setUpperTierHeight] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem("easypresenter_ew_upper_height");
+      if (saved) {
+        const val = parseInt(saved, 10);
+        if (!isNaN(val) && val >= 120 && val <= 1200) {
+          return val;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return DEFAULT_UPPER_HEIGHT;
+  });
+
+  const [isDraggingSplitter, setIsDraggingSplitter] = useState(false);
+  const isDraggingRef = useRef(false);
+  const dragStartYRef = useRef(0);
+  const dragStartHeightRef = useRef(DEFAULT_UPPER_HEIGHT);
+
+  const handleSplitterMouseDown = useCallback(
+    (e: React.MouseEvent | React.TouchEvent) => {
+      e.preventDefault();
+      const clientY = "touches" in e ? e.touches[0].clientY : e.clientY;
+      isDraggingRef.current = true;
+      dragStartYRef.current = clientY;
+      dragStartHeightRef.current = upperTierHeight;
+      setIsDraggingSplitter(true);
+
+      const onPointerMove = (moveEvent: MouseEvent | TouchEvent) => {
+        if (!isDraggingRef.current) return;
+        const currentY =
+          "touches" in moveEvent
+            ? moveEvent.touches[0].clientY
+            : moveEvent.clientY;
+        const deltaY = currentY - dragStartYRef.current;
+        const maxUpperHeight = Math.max(
+          480,
+          (typeof window !== "undefined" ? window.innerHeight : 800) - 200,
+        );
+        const nextHeight = Math.min(
+          Math.max(MIN_UPPER_HEIGHT, dragStartHeightRef.current + deltaY),
+          maxUpperHeight,
+        );
+        setUpperTierHeight(nextHeight);
+      };
+
+      const onPointerUp = () => {
+        if (isDraggingRef.current) {
+          isDraggingRef.current = false;
+          setIsDraggingSplitter(false);
+          setUpperTierHeight((currentHeight) => {
+            try {
+              localStorage.setItem(
+                "easypresenter_ew_upper_height",
+                String(currentHeight),
+              );
+            } catch {
+              // ignore
+            }
+            return currentHeight;
+          });
+        }
+        window.removeEventListener("mousemove", onPointerMove);
+        window.removeEventListener("mouseup", onPointerUp);
+        window.removeEventListener("touchmove", onPointerMove);
+        window.removeEventListener("touchend", onPointerUp);
+      };
+
+      window.addEventListener("mousemove", onPointerMove, { passive: false });
+      window.addEventListener("mouseup", onPointerUp);
+      window.addEventListener("touchmove", onPointerMove, { passive: false });
+      window.addEventListener("touchend", onPointerUp);
+    },
+    [upperTierHeight],
+  );
+
+  const handleResetUpperHeight = useCallback(() => {
+    setUpperTierHeight(DEFAULT_UPPER_HEIGHT);
+    try {
+      localStorage.setItem(
+        "easypresenter_ew_upper_height",
+        String(DEFAULT_UPPER_HEIGHT),
+      );
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // -----------------------------------------------------------------
   // 2. Schedule List (Retains real schedule from state.schedule)
   // -----------------------------------------------------------------
   const currentScheduleItems: ScheduleItem[] = useMemo(() => {
@@ -2280,17 +2375,31 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
         userSelect: "none",
       }}
     >
+      {/* Full-screen drag overlay when actively dragging to resize scripture table */}
+      {isDraggingSplitter && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 9999,
+            cursor: "row-resize",
+            userSelect: "none",
+          }}
+        />
+      )}
       {/* ============================================================= */}
       {/* UPPER TIER: 3 COLUMNS (SCHEDULE, PREVIEW MONITOR, LIVE MONITOR)*/}
       {/* ============================================================= */}
       <div
         style={{
           display: "flex",
-          height: "46%",
-          minHeight: "260px",
-          maxHeight: "380px",
+          height: `${upperTierHeight}px`,
+          minHeight: `${MIN_UPPER_HEIGHT}px`,
+          maxHeight: `${Math.max(500, typeof window !== "undefined" ? window.innerHeight - 180 : 700)}px`,
           borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
           background: "#0f172a",
+          flexShrink: 0,
+          transition: isDraggingSplitter ? "none" : "height 0.15s ease-out",
         }}
       >
         {/* ----------------------------------------------------------- */}
@@ -3862,6 +3971,54 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
             </div>
           </div>
         </div>
+      </div>
+
+      {/* ============================================================= */}
+      {/* DRAGGABLE SPLITTER / RESIZER BAR                              */}
+      {/* ============================================================= */}
+      <div
+        onMouseDown={handleSplitterMouseDown}
+        onTouchStart={handleSplitterMouseDown}
+        onDoubleClick={handleResetUpperHeight}
+        title="Drag up or down to resize table / monitors (Double-click to reset)"
+        style={{
+          height: "8px",
+          background: isDraggingSplitter
+            ? "rgba(56, 189, 248, 0.3)"
+            : "#0b1220",
+          borderTop: isDraggingSplitter
+            ? "1px solid #38bdf8"
+            : "1px solid rgba(255, 255, 255, 0.08)",
+          borderBottom: isDraggingSplitter
+            ? "1px solid #38bdf8"
+            : "1px solid rgba(0, 0, 0, 0.6)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          cursor: "row-resize",
+          userSelect: "none",
+          position: "relative",
+          zIndex: 40,
+          flexShrink: 0,
+          transition: isDraggingSplitter ? "none" : "background 0.15s ease",
+          boxShadow: isDraggingSplitter
+            ? "0 0 10px rgba(56, 189, 248, 0.4)"
+            : "none",
+        }}
+      >
+        {/* Centered Grip Pill */}
+        <div
+          style={{
+            width: "56px",
+            height: "3px",
+            borderRadius: "999px",
+            background: isDraggingSplitter
+              ? "#38bdf8"
+              : "rgba(255, 255, 255, 0.28)",
+            boxShadow: isDraggingSplitter ? "0 0 8px #38bdf8" : "none",
+            transition: "all 0.15s ease",
+          }}
+        />
       </div>
 
       {/* ============================================================= */}
