@@ -111,11 +111,133 @@ async function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Fallback text for Yoruba Bibeli Mímọ́ Malachi 4:1-6 (standard 4-chapter division)
+const YORUBA_MALACHI_4 = [
+  { verse: 1, text: "Nítorí, kíyèsi i, ọjọ́ náà ń bọ̀, tí yóò jó bí iná ààrò; gbogbo àwọn agbéraga, àti gbogbo àwọn tí ń hùwà búburú yóò sì jẹ́ àgékù koríko; ọjọ́ tí ń bọ̀ náà yóò sì jó wọn run, ni Olúwa àwọn ọmọ-ogun wí, kì yóò sì fi gbòǹgbò tàbí ẹ̀ka sílẹ̀ fún wọn." },
+  { verse: 2, text: "Ṣùgbọ́n fún ẹ̀yin tí ó bẹ̀rù orúkọ mi, oòrùn òdodo yóò yọ pẹ̀lú ìmúláradá ní ìyẹ́ apá rẹ̀; ẹ̀yin yóò sì jáde lọ, ẹ̀yin yóò sì máa fo bí àwọn ẹgbọrọ màlúù tí a ti inú ibùso wọn tú sílẹ̀." },
+  { verse: 3, text: "Ẹ̀yin yóò sì tẹ àwọn ènìyàn búburú mọ́lẹ̀; nítorí tí wọn yóò jẹ́ eérú lábẹ́ àtẹ́lẹsẹ̀ yín ní ọjọ́ tí èmi yóò ṣe èyí, ni Olúwa àwọn ọmọ-ogun wí." },
+  { verse: 4, text: "Ẹ rántí òfin Mose ìránṣẹ́ mi, tí mo pàṣẹ fún un ní Horebu fún gbogbo Israẹli, pẹ̀lú àwọn ìlànà àti àwọn ìdájọ́." },
+  { verse: 5, text: "Kíyèsi i, èmi yóò rán Elijah wòlíì sí yín kí ọjọ́ Olúwa títóbi àti ẹ̀rù náà tó dé:" },
+  { verse: 6, text: "Òun yóò sì pa ọkàn àwọn baba dà sí ti àwọn ọmọ, àti ọkàn àwọn ọmọ sí ti àwọn baba wọn, kí èmi má baà wá, kí èmi má sì fi ègún kọlu ilẹ̀ náà." }
+];
+
+/**
+ * Checks whether a translation file is complete and valid.
+ * Returns { isComplete: boolean, reason: string, totalVerses: number, totalChapters: number, expectedChapters: number, missingChapters: Array }
+ */
+export function checkTranslationStatus(ver) {
+  const filePath = path.join(BIBLES_DIR, `${ver.code}.json`);
+  if (!fs.existsSync(filePath)) {
+    return {
+      isComplete: false,
+      reason: "File does not exist",
+      totalVerses: 0,
+      totalChapters: 0,
+      expectedChapters: 1189,
+      missingChapters: [],
+    };
+  }
+
+  let data;
+  try {
+    const raw = fs.readFileSync(filePath, "utf-8");
+    data = JSON.parse(raw);
+  } catch (err) {
+    return {
+      isComplete: false,
+      reason: `Corrupted JSON (${err.message})`,
+      totalVerses: 0,
+      totalChapters: 0,
+      expectedChapters: 1189,
+      missingChapters: [],
+    };
+  }
+
+  if (!data || typeof data !== "object" || !data.books) {
+    return {
+      isComplete: false,
+      reason: "Missing 'books' data object in JSON",
+      totalVerses: 0,
+      totalChapters: 0,
+      expectedChapters: 1189,
+      missingChapters: [],
+    };
+  }
+
+  let totalVerses = 0;
+  let totalChapters = 0;
+  let expectedChapters = 0;
+  const missingChapters = [];
+
+  // TPT covers New Testament + Psalms, Proverbs, Song of Solomon
+  const isTPT = ver.code === "TPT";
+  const booksToCheck = isTPT
+    ? BIBLE_BOOKS.filter((b) => [19, 20, 22].includes(b.id) || b.id >= 40)
+    : BIBLE_BOOKS;
+
+  for (const book of booksToCheck) {
+    expectedChapters += book.chapters;
+    const bookData = data.books[book.id] || data.books[String(book.id)];
+    if (!bookData || !bookData.chapters) {
+      for (let ch = 1; ch <= book.chapters; ch++) {
+        missingChapters.push({ bookId: book.id, bookName: book.name, chapter: ch });
+      }
+      continue;
+    }
+
+    for (let ch = 1; ch <= book.chapters; ch++) {
+      const chVerses = bookData.chapters[ch] || bookData.chapters[String(ch)];
+      if (Array.isArray(chVerses) && chVerses.length > 0) {
+        totalVerses += chVerses.length;
+        totalChapters++;
+      } else {
+        // Special case for Malachi 4 where verses 19-24 are in Malachi 3 (Hebrew versification)
+        if (book.id === 39 && ch === 4) {
+          const mal3 = bookData.chapters[3] || bookData.chapters["3"];
+          if (Array.isArray(mal3) && mal3.length > 18) {
+            totalChapters++;
+            continue;
+          }
+        }
+        missingChapters.push({ bookId: book.id, bookName: book.name, chapter: ch });
+      }
+    }
+  }
+
+  const minExpectedVerses = isTPT ? 10000 : 25000;
+  const isComplete =
+    missingChapters.length === 0 &&
+    totalChapters === expectedChapters &&
+    totalVerses >= minExpectedVerses;
+
+  return {
+    isComplete,
+    reason: isComplete
+      ? "Complete"
+      : missingChapters.length > 0
+      ? `Missing ${missingChapters.length} chapter(s) (${missingChapters.slice(0, 3).map(m => `${m.bookName} ${m.chapter}`).join(", ")}${missingChapters.length > 3 ? "..." : ""})`
+      : `Low verse count (${totalVerses} verses)`,
+    totalVerses,
+    totalChapters,
+    expectedChapters,
+    missingChapters,
+    existingData: data,
+  };
+}
+
 // Download a full translation using bolls.life API with parallel batching
 async function downloadVersion(ver) {
-  console.log(`\n📦 Downloading Bible version: ${ver.name} (${ver.code})...`);
+  console.log(`\n📦 Processing Bible version: ${ver.name} (${ver.code})...`);
   const versionCacheDir = path.join(CACHE_DIR, ver.code);
   if (!fs.existsSync(versionCacheDir)) fs.mkdirSync(versionCacheDir, { recursive: true });
+
+  const fullFilePath = path.join(BIBLES_DIR, `${ver.code}.json`);
+  let existingData = null;
+  if (fs.existsSync(fullFilePath)) {
+    try {
+      existingData = JSON.parse(fs.readFileSync(fullFilePath, "utf-8"));
+    } catch {}
+  }
 
   const bibleData = {
     version: ver.code,
@@ -123,12 +245,18 @@ async function downloadVersion(ver) {
     books: {}
   };
 
+  const isTPT = ver.code === "TPT";
+  const booksToProcess = isTPT
+    ? BIBLE_BOOKS.filter((b) => [19, 20, 22].includes(b.id) || b.id >= 40)
+    : BIBLE_BOOKS;
+
   let totalChapters = 0;
-  for (const b of BIBLE_BOOKS) totalChapters += b.chapters;
+  for (const b of booksToProcess) totalChapters += b.chapters;
   let processedCount = 0;
+  let newlyFetchedCount = 0;
 
   // Process book by book
-  for (const book of BIBLE_BOOKS) {
+  for (const book of booksToProcess) {
     bibleData.books[book.id] = {
       name: book.name,
       chapters: {}
@@ -146,13 +274,46 @@ async function downloadVersion(ver) {
           const cacheFile = path.join(versionCacheDir, `${book.id}_${ch}.json`);
           let verses = null;
 
-          if (fs.existsSync(cacheFile)) {
+          // 1. Check existing consolidated JSON file first
+          const existingVerses =
+            existingData?.books?.[book.id]?.chapters?.[ch] ||
+            existingData?.books?.[String(book.id)]?.chapters?.[String(ch)];
+          if (Array.isArray(existingVerses) && existingVerses.length > 0) {
+            verses = existingVerses;
+            if (!fs.existsSync(cacheFile)) {
+              try { fs.writeFileSync(cacheFile, JSON.stringify(verses), "utf-8"); } catch {}
+            }
+          }
+
+          // 2. Check disk cache file if not found in consolidated JSON
+          if (!verses && fs.existsSync(cacheFile)) {
             try {
               verses = JSON.parse(fs.readFileSync(cacheFile, "utf-8"));
             } catch {}
           }
 
-          if (!verses) {
+          // 3. Special handling for Malachi 4:1-6
+          if ((!verses || verses.length === 0) && book.id === 39 && ch === 4) {
+            if (ver.code === "YOR") {
+              verses = YORUBA_MALACHI_4;
+              fs.writeFileSync(cacheFile, JSON.stringify(verses), "utf-8");
+            } else {
+              const mal3 =
+                bibleData.books[39]?.chapters?.[3] ||
+                existingData?.books?.[39]?.chapters?.[3] ||
+                existingData?.books?.["39"]?.chapters?.["3"];
+              if (Array.isArray(mal3) && mal3.length > 18) {
+                verses = mal3.slice(18).map((v, idx) => ({
+                  verse: idx + 1,
+                  text: v.text,
+                }));
+                fs.writeFileSync(cacheFile, JSON.stringify(verses), "utf-8");
+              }
+            }
+          }
+
+          // 4. Fetch missing chapters from remote API (only if not local provider)
+          if ((!verses || verses.length === 0) && ver.provider !== "local") {
             let retries = 3;
             while (retries > 0 && !verses) {
               try {
@@ -183,6 +344,7 @@ async function downloadVersion(ver) {
                       return { verse: v.verse, text: clean };
                     });
                     fs.writeFileSync(cacheFile, JSON.stringify(verses), "utf-8");
+                    newlyFetchedCount++;
                   }
                 } else {
                   retries--;
@@ -195,7 +357,7 @@ async function downloadVersion(ver) {
             }
           }
 
-          if (verses) {
+          if (verses && verses.length > 0) {
             bibleData.books[book.id].chapters[ch] = verses;
           }
           processedCount++;
@@ -204,14 +366,13 @@ async function downloadVersion(ver) {
 
       const pct = ((processedCount / totalChapters) * 100).toFixed(1);
       process.stdout.write(`\r  ⏳ [${ver.code}] Progress: ${processedCount}/${totalChapters} chapters (${pct}%)`);
-      await sleep(50);
+      await sleep(30);
     }
   }
 
   // Save complete consolidated JSON file
-  const fullFilePath = path.join(BIBLES_DIR, `${ver.code}.json`);
   fs.writeFileSync(fullFilePath, JSON.stringify(bibleData), "utf-8");
-  console.log(`\n  ✅ Saved complete translation to ${fullFilePath}`);
+  console.log(`\n  ✅ Saved complete translation to ${fullFilePath} (${newlyFetchedCount} newly fetched chapters)`);
 }
 
 async function main() {
@@ -220,23 +381,52 @@ async function main() {
   console.log("=================================================");
   console.log(`Target Directory: ${BIBLES_DIR}`);
 
-  const requested = process.argv.slice(2);
-  const versionsToDownload = requested.length > 0
-    ? TARGET_VERSIONS.filter(v => requested.map(r => r.toUpperCase()).includes(v.code))
+  const args = process.argv.slice(2);
+  const isForce = args.includes("--force") || args.includes("-f");
+  const requestedCodes = args
+    .filter((a) => !a.startsWith("-"))
+    .map((r) => r.toUpperCase());
+
+  const versionsToCheck = requestedCodes.length > 0
+    ? TARGET_VERSIONS.filter((v) => requestedCodes.includes(v.code))
     : TARGET_VERSIONS;
 
-  console.log(`Versions selected: ${versionsToDownload.map(v => v.code).join(", ")}`);
+  console.log(`\nChecking ${versionsToCheck.length} translation(s) for completeness${isForce ? " (FORCE RE-DOWNLOAD ENABLED)" : ""}...`);
 
-  for (const ver of versionsToDownload) {
+  const toDownload = [];
+  const completeList = [];
+
+  for (const ver of versionsToCheck) {
+    const status = checkTranslationStatus(ver);
+    if (status.isComplete && !isForce) {
+      console.log(`  ⏩ [SKIP] ${ver.code.padEnd(6)}: Complete (${status.totalVerses.toLocaleString()} verses across ${status.totalChapters} chapters)`);
+      completeList.push(ver);
+    } else {
+      console.log(`  📥 [NEED] ${ver.code.padEnd(6)}: Incomplete -> ${status.reason}`);
+      toDownload.push({ ver, status });
+    }
+  }
+
+  if (toDownload.length === 0) {
+    console.log("\n=================================================");
+    console.log("  🎉 All checked Bible translations are already 100% complete!");
+    console.log("  ⚡ No downloads were needed. (Use --force to force re-download)");
+    console.log("=================================================");
+    return;
+  }
+
+  console.log(`\nStarting download for ${toDownload.length} incomplete translation(s)...`);
+
+  for (const { ver } of toDownload) {
     try {
       await downloadVersion(ver);
     } catch (err) {
-      console.error(`❌ Error downloading ${ver.code}:`, err.message);
+      console.error(`\n❌ Error downloading ${ver.code}:`, err.message);
     }
   }
 
   console.log("\n=================================================");
-  console.log("  🎉 All selected Bible versions stored locally!");
+  console.log("  🎉 Incomplete Bible downloads finished!");
   console.log("=================================================");
 }
 
