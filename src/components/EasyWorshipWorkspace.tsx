@@ -3014,7 +3014,7 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
             </span>
 
             <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              {/* Add Preview Item to Schedule */}
+              {/* Add Preview Item to Schedules */}
               <button
                 onClick={handleAddPreviewToSchedule}
                 style={{
