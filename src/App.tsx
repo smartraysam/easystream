@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useWorshipSync } from './hooks/useWorshipSync';
 import { Header } from './components/Header';
 import { SchedulePanel } from './components/SchedulePanel';
@@ -14,7 +14,7 @@ import { TimerModal } from './components/TimerModal';
 import { SessionModal } from './components/SessionModal';
 import { V2Presenter } from './components/V2Presenter';
 import { FormatSettingsModal } from './components/FormatSettingsModal';
-import { LibraryItem, ScheduleItem } from './types';
+import { LibraryItem, ScheduleItem, PresenterLayout } from './types';
 import { DEFAULT_SCHEDULES } from './data/defaults';
 
 export const App: React.FC = () => {
@@ -102,6 +102,13 @@ export const App: React.FC = () => {
   const searchParams = new URLSearchParams(window.location.search);
   const isOverlayMode = searchParams.get('overlay') === '1' || searchParams.get('transparent') === '1';
 
+  // Normalize legacy /v2 URL to /modern in browser history without reload
+  useEffect(() => {
+    if (window.location.pathname === '/v2' || window.location.pathname === '/v2.html') {
+      window.history.replaceState(null, '', '/modern' + window.location.search);
+    }
+  }, []);
+
   if (pathname === '/display' || pathname === '/display.html') {
     return <DisplayView state={state} progress={progress} isOverlay={isOverlayMode} />;
   }
@@ -122,7 +129,37 @@ export const App: React.FC = () => {
     );
   }
 
-  if (pathname === '/v2' || pathname === '/v2.html' || searchParams.get('v2') === '1' || searchParams.get('mode') === 'v2') {
+  // Explicit classic mode check
+  const isExplicitClassic =
+    pathname === '/classic' ||
+    pathname === '/classic.html' ||
+    searchParams.get('mode') === 'classic' ||
+    searchParams.get('classic') === '1';
+
+  // Explicit modern mode check (supports /modern and legacy /v2)
+  const isExplicitModern =
+    pathname === '/modern' ||
+    pathname === '/modern.html' ||
+    pathname === '/v2' ||
+    pathname === '/v2.html' ||
+    searchParams.get('mode') === 'modern' ||
+    searchParams.get('modern') === '1' ||
+    searchParams.get('mode') === 'v2' ||
+    searchParams.get('v2') === '1';
+
+  // Layout preference (modern/easyworship is the DEFAULT layout)
+  const storedLayout = (typeof window !== 'undefined'
+    ? localStorage.getItem('easypresenter_workspace_layout')
+    : null) as PresenterLayout | null;
+  const currentLayout: PresenterLayout =
+    state.theme?.presenterLayout || storedLayout || 'easyworship';
+
+  // Modern presenter view is the DEFAULT layout for the application:
+  // Renders by default at '/', at '/modern', or whenever classic is not explicitly chosen.
+  const shouldRenderModern =
+    isExplicitModern || (!isExplicitClassic && currentLayout !== 'classic');
+
+  if (shouldRenderModern) {
     return (
       <V2Presenter
         state={state}

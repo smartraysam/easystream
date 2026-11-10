@@ -128,11 +128,21 @@ export const FormatSettingsModal: React.FC<FormatSettingsModalProps> = ({
   const handleSelectLayout = (layout: PresenterLayout) => {
     localStorage.setItem('easypresenter_workspace_layout', layout);
     onUpdateTheme({ presenterLayout: layout });
-    const isV2Path = window.location.pathname.startsWith('/v2');
-    if (layout === 'classic' && isV2Path) {
-      window.location.href = '/';
-    } else if ((layout === 'easyworship' || layout === 'quickdeck') && !isV2Path && window.location.pathname === '/') {
-      window.location.href = '/v2';
+    const isClassicPath =
+      window.location.pathname === '/classic' ||
+      window.location.pathname === '/classic.html';
+    const isModernOrV2 =
+      window.location.pathname.startsWith('/modern') ||
+      window.location.pathname.startsWith('/v2');
+
+    if (layout === 'classic') {
+      if (isModernOrV2) {
+        window.location.href = '/classic';
+      }
+    } else if (layout === 'easyworship' || layout === 'quickdeck') {
+      if (isClassicPath) {
+        window.location.href = '/modern';
+      }
     }
   };
 
