@@ -602,37 +602,20 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
     };
   };
 
-  // Helper to smoothly scroll the scripture table body to the row highlighted with the LIVE mark or selection
-  const scrollToHighlightedScriptureRow = useCallback(
+  // Helper to smoothly scroll the scripture table body specifically to the row currently marked LIVE
+  const scrollToLiveScriptureRow = useCallback(
     (behavior: ScrollBehavior = "smooth") => {
       const container = scriptureTableBodyRef.current;
       if (!container) return;
 
-      // Priority 1: Row marked LIVE
-      let targetRow = container.querySelector<HTMLElement>('[data-live="true"]');
-
-      // Priority 2: Row selected / preview
-      if (!targetRow) {
-        targetRow = container.querySelector<HTMLElement>('[data-selected="true"]');
-      }
-
-      // Priority 3: Row matching selectedVerseNumber
-      if (!targetRow && selectedVerseNumber !== null) {
-        targetRow = container.querySelector<HTMLElement>(`[data-verse="${selectedVerseNumber}"]`);
-      }
-
-      // Priority 4: Row matching start of activeVerseRange
-      if (!targetRow && activeVerseRange) {
-        targetRow = container.querySelector<HTMLElement>(`[data-verse="${activeVerseRange.start}"]`);
-      }
-
-      if (!targetRow) return;
+      const liveRow = container.querySelector<HTMLElement>('[data-live="true"]');
+      if (!liveRow) return;
 
       const containerHeight = container.clientHeight;
-      const rowTop = targetRow.offsetTop;
-      const rowHeight = targetRow.offsetHeight;
+      const rowTop = liveRow.offsetTop;
+      const rowHeight = liveRow.offsetHeight;
 
-      // Vertically center the highlighted row within the table body viewport
+      // Vertically center the live row within the table body viewport
       const targetScrollTop = Math.max(
         0,
         rowTop - containerHeight / 2 + rowHeight / 2,
@@ -643,7 +626,7 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
         behavior,
       });
     },
-    [selectedVerseNumber, activeVerseRange],
+    [],
   );
 
   // -----------------------------------------------------------------
@@ -832,10 +815,12 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
           }
         }
 
-        // Automatically scroll scripture table so the captured verse / live mark is immediately centered in view
-        setTimeout(() => {
-          scrollToHighlightedScriptureRow("smooth");
-        }, 80);
+        // Only scroll scripture table to the live position when this query actually goes live!
+        if (shouldGoLive) {
+          setTimeout(() => {
+            scrollToLiveScriptureRow("smooth");
+          }, 80);
+        }
       } else {
         setSearchError(`No verses found for "${raw}" in ${effectiveVersion}.`);
         setActiveVerseRange(null);
@@ -848,36 +833,54 @@ export const EasyWorshipWorkspace: React.FC<EasyWorshipWorkspaceProps> = ({
     }
   };
 
-  // Initial load: fetch John 3:16 in KJV
+  // Initial load: fetch John 3:16 in KJV (preview only)
   useEffect(() => {
     fetchScriptureData("John 3:16", "KJV", 16, false);
   }, []);
 
-  // Auto-scroll scripture table so the highlighted live/selected verse row is centered in view
+  // Track the previous live scripture state.
+  // ONLY auto-scroll the table when a scripture verse or slide JUST WENT LIVE (or live position advanced).
+  // Selecting a verse for preview will NEVER scroll the table to the live verse position.
+  const lastLiveScriptureKeyRef = useRef<string>("");
+
   useEffect(() => {
     if (activeTab !== "scriptures") return;
     if (!scriptureResult?.verses || scriptureResult.verses.length === 0) return;
 
-    const frameId = requestAnimationFrame(() => {
-      scrollToHighlightedScriptureRow("smooth");
-    });
-    const timerId = setTimeout(() => {
-      scrollToHighlightedScriptureRow("smooth");
-    }, 100);
+    const isScriptureLive =
+      state.category === "scripture" && Boolean(state.title);
 
-    return () => {
-      cancelAnimationFrame(frameId);
-      clearTimeout(timerId);
-    };
+    if (!isScriptureLive) {
+      lastLiveScriptureKeyRef.current = "";
+      return;
+    }
+
+    const currentLiveKey = `${state.title}__cur_${state.cur}__line_${state.lines?.[state.cur] || ""}`;
+
+    // ONLY scroll when live scripture has just changed or just gone live!
+    if (currentLiveKey !== lastLiveScriptureKeyRef.current) {
+      lastLiveScriptureKeyRef.current = currentLiveKey;
+
+      const frameId = requestAnimationFrame(() => {
+        scrollToLiveScriptureRow("smooth");
+      });
+      const timerId = setTimeout(() => {
+        scrollToLiveScriptureRow("smooth");
+      }, 100);
+
+      return () => {
+        cancelAnimationFrame(frameId);
+        clearTimeout(timerId);
+      };
+    }
   }, [
     activeTab,
     scriptureResult,
-    selectedVerseNumber,
-    state.cur,
-    state.title,
     state.category,
-    activeVerseRange,
-    scrollToHighlightedScriptureRow,
+    state.title,
+    state.cur,
+    state.lines,
+    scrollToLiveScriptureRow,
   ]);
 
   // Clear scripture search reference and reset verse and results
